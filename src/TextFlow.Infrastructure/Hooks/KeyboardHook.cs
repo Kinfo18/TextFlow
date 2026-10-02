@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using TextFlow.Core.Expansion;
+using TextFlow.Core.Menus;
 using TextFlow.Infrastructure.Input;
 using TextFlow.Infrastructure.Windows;
 using Windows.Win32;
@@ -19,6 +20,13 @@ public abstract record HookEvent;
 public sealed record TriggerTyped(TriggerMatch Match, nint ForegroundWindow) : HookEvent;
 
 public sealed record ForegroundChanged(nint Window) : HookEvent;
+
+/// <summary>Menu mode only: a navigation key was swallowed and belongs to the open menu.</summary>
+public sealed record MenuKeyPressed(MenuInput Input) : HookEvent;
+
+/// <summary>Menu mode only: a key the menu does not handle was typed (and passed through) or the mouse was pressed.</summary>
+/// <param name="ClickX">Physical screen coordinates of a mouse press; null for a key.</param>
+public sealed record MenuInterrupted(int? ClickX = null, int? ClickY = null) : HookEvent;
 
 /// <summary>Content-free hook health counters.</summary>
 public sealed record HookStats(long KeyEvents, double MaxCallbackMs);
@@ -46,6 +54,7 @@ public sealed unsafe class KeyboardHook : IDisposable
     private UnhookWinEventSafeHandle? _foregroundHook;
     private char? _pendingDeadKey;
     private volatile bool _captureEnabled;
+    private volatile bool _menuMode;
     private long _keyEvents;
     private long _maxCallbackTicks;
 
@@ -81,6 +90,21 @@ public sealed unsafe class KeyboardHook : IDisposable
             {
                 _thread.InvokeAsync(ResetState);
             }
+        }
+    }
+
+    /// <summary>
+    /// While true, navigation keys (arrows, Enter, Esc, 1-9) are swallowed and reported as
+    /// <see cref="MenuKeyPressed"/>, so the target keeps focus and caret while a non-activating menu is shown.
+    /// Any other key or mouse press is reported as <see cref="MenuInterrupted"/> and passes through.
+    /// </summary>
+    public bool MenuMode
+    {
+        get => _menuMode;
+        set
+        {
+            _menuMode = value;
+            _thread.InvokeAsync(ResetState);
         }
     }
 
@@ -123,9 +147,14 @@ public sealed unsafe class KeyboardHook : IDisposable
     private static LRESULT MouseProc(int code, WPARAM wParam, LPARAM lParam)
     {
         var message = (uint)wParam.Value;
-        if (code >= 0 && message is PInvoke.WM_LBUTTONDOWN or PInvoke.WM_RBUTTONDOWN or PInvoke.WM_MBUTTONDOWN)
+        if (code >= 0 && message is PInvoke.WM_LBUTTONDOWN or PInvoke.WM_RBUTTONDOWN or PInvoke.WM_MBUTTONDOWN && s_instance is { } self)
         {
-            s_instance?.ResetState(); // a click may move the caret: the buffer no longer reflects text before it
+            self.ResetState(); // a click may move the caret: the buffer no longer reflects text before it
+            if (self._menuMode)
+            {
+                var point = ((MSLLHOOKSTRUCT*)lParam.Value)->pt;
+                self._events.Writer.TryWrite(new MenuInterrupted(point.X, point.Y));
+            }
         }
 
         return PInvoke.CallNextHookEx(default, code, wParam, lParam);
@@ -157,7 +186,9 @@ public sealed unsafe class KeyboardHook : IDisposable
             }
 
             Interlocked.Increment(ref _keyEvents);
-            return ProcessKeyDown((VIRTUAL_KEY)key->vkCode, key->scanCode);
+            return _menuMode
+                ? ProcessMenuKey((VIRTUAL_KEY)key->vkCode)
+                : ProcessKeyDown((VIRTUAL_KEY)key->vkCode, key->scanCode);
         }
         finally
         {
@@ -168,6 +199,37 @@ public sealed unsafe class KeyboardHook : IDisposable
             }
         }
     }
+
+    private bool ProcessMenuKey(VIRTUAL_KEY vk)
+    {
+        if (IsModifier(vk))
+        {
+            return false;
+        }
+
+        var shortcut = IsDown(VIRTUAL_KEY.VK_CONTROL) || IsDown(VIRTUAL_KEY.VK_MENU) || IsDown(VIRTUAL_KEY.VK_LWIN) || IsDown(VIRTUAL_KEY.VK_RWIN);
+        if (!shortcut && ToMenuInput(vk) is { } input)
+        {
+            _events.Writer.TryWrite(new MenuKeyPressed(input));
+            return true;
+        }
+
+        _events.Writer.TryWrite(new MenuInterrupted());
+        return false;
+    }
+
+    private static MenuInput? ToMenuInput(VIRTUAL_KEY vk) => vk switch
+    {
+        VIRTUAL_KEY.VK_UP => MenuInput.Up,
+        VIRTUAL_KEY.VK_DOWN => MenuInput.Down,
+        VIRTUAL_KEY.VK_LEFT => MenuInput.Left,
+        VIRTUAL_KEY.VK_RIGHT => MenuInput.Right,
+        VIRTUAL_KEY.VK_RETURN => MenuInput.Enter,
+        VIRTUAL_KEY.VK_ESCAPE => MenuInput.Escape,
+        >= VIRTUAL_KEY.VK_1 and <= VIRTUAL_KEY.VK_9 => MenuInput.Number(vk - VIRTUAL_KEY.VK_0),
+        >= VIRTUAL_KEY.VK_NUMPAD1 and <= VIRTUAL_KEY.VK_NUMPAD9 => MenuInput.Number(vk - VIRTUAL_KEY.VK_NUMPAD0),
+        _ => null,
+    };
 
     private bool ProcessKeyDown(VIRTUAL_KEY vk, uint scanCode)
     {

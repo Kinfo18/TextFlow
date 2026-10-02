@@ -8,11 +8,13 @@ using TextFlow.Core.Operations;
 using TextFlow.Core.Security;
 using TextFlow.Core.Templates;
 using TextFlow.Infrastructure.Clipboard;
+using TextFlow.Infrastructure.Feedback;
 using TextFlow.Infrastructure.Hooks;
 using TextFlow.Infrastructure.Input;
 using TextFlow.Infrastructure.Targeting;
 
 Console.OutputEncoding = Encoding.UTF8;
+Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // physical pixels for caret coordinates and the menu popup
 
 var command = args.FirstOrDefault() ?? "help";
 return command switch
@@ -21,6 +23,7 @@ return command switch
     "insert" => await InsertSpike.RunAsync(args.Skip(1).ToArray()),
     "expand" => await ExpandSpike.RunAsync(),
     "import" => ImportSpike.Run(args.Skip(1).ToArray()),
+    "menu" => await TextFlow.Spikes.MenuSpike.RunAsync(args.Skip(1).ToArray()),
     _ => Help(),
 };
 
@@ -34,6 +37,7 @@ static int Help()
                                          Cuenta atrás 3 s, captura destino e inserta (S2)
           expand                         Hook global + snippets demo instantáneos: ;firma ;fecha ;cur ;mail CC (S3)
           import <archivo.atext>         Lee un backup de aText y muestra resumen e incidencias (S6)
+          menu <archivo.atext> [vol]     Abreviaturas de grupo abren menú en el caret; vol 0-100 del chime (S7)
         """);
     return 0;
 }
@@ -149,6 +153,7 @@ internal static class ExpandSpike
     };
 
     private static readonly CultureInfo Culture = CultureInfo.GetCultureInfo("es-ES");
+    private static readonly ExpansionSound Sound = new();
 
     public static async Task<int> RunAsync()
     {
@@ -233,6 +238,11 @@ internal static class ExpandSpike
 
         var result = await coordinator.InsertAsync(
             new InsertionRequest(target, text, match.Backspaces, CaretOffsetFromEnd: caret), CancellationToken.None);
+        if (result.Succeeded)
+        {
+            Sound.Play();
+        }
+
         Console.WriteLine($"  {match.SnippetId} → {target.ProcessName}: {result.Status} via {result.Strategy} " +
                           $"en {result.Elapsed.TotalMilliseconds:F0} ms {result.Detail}");
     }

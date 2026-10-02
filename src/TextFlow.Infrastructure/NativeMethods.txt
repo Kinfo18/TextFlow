@@ -72,3 +72,6 @@ DestroyWindow
 INPUT
 KEYBDINPUT
 PeekMessage
+PlaySound
+DwmSetWindowAttribute
+DWM_WINDOW_CORNER_PREFERENCE

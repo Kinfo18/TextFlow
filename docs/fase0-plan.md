@@ -4,14 +4,14 @@ Decisiones de la sesión 2026-10-01: ver `docs/adr/0001`–`0006`. Revisión 202
 
 | # | Spike | Estado | Evidencia |
 |---|---|---|---|
-| S0 | Andamiaje .NET 10 + tests | ✅ | `TextFlow.sln`, 117 tests Core + 5 de escritorio |
+| S0 | Andamiaje .NET 10 + tests | ✅ | `TextFlow.sln`, 153 tests Core + 5 de escritorio |
 | S1 | Target Resolver multi-monitor | ✅ base | `Win32TargetResolver` + `UiaFocusedControlInspector`; captura 54 ms frío / 2 ms caliente |
 | S2 | Inserción clipboard + SendInput | ✅ base | `ClipboardStrategy`, `SendInputStrategy`, `InsertionCoordinator`; 5 tests de escritorio reales |
 | S3 | Hook de teclado + triggers | 🟡 validado en Notepad/Firefox/Word; falta resto de matriz | expansión **instantánea** por defecto (`TriggerMode.Immediate`, estilo aText) + `IgnoreCase` por trigger; SendInput falló en Notepad → clipboard primero |
 | S4 | Template Engine | ✅ | `TemplateParser`/`TemplateRenderer`, 22 tests |
 | S5 | Benchmark ASR (whisper.cpp vs Parakeet) | ⏳ | requiere descargar modelos (~0,5–1,6 GB c/u) |
 | S6 | Importador aText (Windows) | 🟡 lector listo; falta menú de grupo | `ATextBackupReader` lee el backup real: 51 grupos, 36 abreviaturas, 326 snippets. `spikes import <archivo>` |
-| S7 | Menú de grupo (abreviatura → menú de snippets) | ⏳ | uso real del usuario en aText; riesgo: robar foco y devolverlo al destino antes de pegar |
+| S7 | Menú de grupo (abreviatura → menú de snippets) | ✅ prototipo | ventana **no activable** (`WS_EX_NOACTIVATE`) + hook en `MenuMode`: el destino nunca pierde foco. Validado por el usuario en Notepad (ancla caret) y Firefox (ancla ratón: Firefox no expone caret Win32, pero el usuario lo vio junto al cursor). Sonido validado. `spikes menu <archivo>` |
 
 ## Cómo probar a mano
 
@@ -39,6 +39,12 @@ Ejecutar `spikes` desde una terminal: la terminal está excluida por política, 
 | Teams / Slack / WhatsApp Web | | | | | | lectura async del portapapeles |
 | Windows Terminal / CMD | ✅ DENY (captura OFF) | | | | | |
 | App elevada | PermissionDenied esperado | | | | | |
+
+## Requisitos UX para V0.1 (feedback del usuario 2026-10-02)
+
+- **Menú de grupo final (WinUI 3):** más limpio y moderno que el prototipo WinForms; esquinas redondeadas, gradiente sutil, Fluent (Mica/Acrylic), modo claro/oscuro. Mantener: no activable, números 1-9, notas ⓘ no seleccionables, breadcrumb de submenús.
+- **Sonido al expandir:** chime breve propio (`ChimeSynth`, ~95 ms, dos notas E6→A6, ≈ -13 dBFS), asíncrono vía `PlaySound` en memoria; en ajustes: activar/desactivar y **volumen 0-100 %** (`ExpansionSound.Volume`, independiente del mezclador de Windows). No se copia el sonido de aText.
+- **Caret en navegadores:** Firefox/Chrome no exponen caret Win32 → buscar UIA `TextPattern` para anclar el menú al cursor de texto en vez del ratón.
 
 ## Pendientes técnicos detectados
 
