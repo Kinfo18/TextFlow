@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+coverage/
+# ASR/LLM model files never go into git
+models/
+*.gguf
+*.bin
+*.onnx
+
+# Personal snippet backups (private data) never go into git
+*.atext

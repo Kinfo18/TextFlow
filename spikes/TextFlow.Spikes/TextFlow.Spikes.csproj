@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TextFlow.Infrastructure\TextFlow.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\TextFlow.Core\TextFlow.Core.csproj" />
+    <ProjectReference Include="..\..\src\TextFlow.Contracts\TextFlow.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(WindowsTfm)</TargetFramework>
+  </PropertyGroup>
+
+</Project>
