@@ -1,4 +1,3 @@
-using System.Globalization;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Import;
 using TextFlow.Core.Library;
@@ -20,14 +19,12 @@ public sealed record LibraryStatus(string? SourcePath, LibrarySummary? Summary, 
 /// </summary>
 public sealed class LibraryHost : IAsyncDisposable
 {
-    private const int BackupsKept = 10;
-
     /// <summary>aText writes the backup in several steps: wait for it to settle before reading.</summary>
     private static readonly TimeSpan ReimportDelay = TimeSpan.FromSeconds(1);
 
-    private readonly AppPaths _paths;
     private readonly IDiagnosticSink _sink;
     private readonly SqliteDatabase _db;
+    private readonly LibraryBackups _backups;
     private readonly Timer _reimportTimer;
     private FileSystemWatcher? _watcher;
     private int _lastImportIssues;
@@ -35,9 +32,9 @@ public sealed class LibraryHost : IAsyncDisposable
 
     public LibraryHost(AppPaths paths, IDiagnosticSink sink)
     {
-        _paths = paths;
         _sink = sink;
         _db = new SqliteDatabase(paths.Database);
+        _backups = new LibraryBackups(_db, paths.Backups);
         Service = new LibraryService(new SqliteLibraryRepository(_db, TimeProvider.System));
         Service.Changed += root => Publish(root, error: null);
         _reimportTimer = new Timer(_ => _ = ReimportFromWatcherAsync(), null, Timeout.Infinite, Timeout.Infinite);
@@ -166,17 +163,17 @@ public sealed class LibraryHost : IAsyncDisposable
         await Service.ImportAsync(import.Root, ct).ConfigureAwait(false); // raises Changed → Publish
     }
 
-    private async Task BackupAsync(CancellationToken ct)
-    {
-        var name = $"textflow-{DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.db";
-        await _db.BackupAsync(Path.Combine(_paths.Backups, name), ct).ConfigureAwait(false);
+    private Task<LibraryBackup> BackupAsync(CancellationToken ct) => _backups.CreateAsync(DateTimeOffset.Now, ct);
 
-        foreach (var old in new DirectoryInfo(_paths.Backups).GetFiles("textflow-*.db")
-                     .OrderByDescending(f => f.Name, StringComparer.Ordinal)
-                     .Skip(BackupsKept))
-        {
-            old.Delete();
-        }
+    /// <summary>Snapshots taken before imports and restores, newest first (H2.5).</summary>
+    public IReadOnlyList<LibraryBackup> ListBackups() => _backups.List();
+
+    /// <summary>Reads a snapshot (untouched) and reports what restoring it would change.</summary>
+    /// <exception cref="InvalidDataException">The file is not a TextFlow database.</exception>
+    public async Task<(LibraryGroup Root, ImportPreview Preview)> PreviewBackupAsync(LibraryBackup backup, CancellationToken ct)
+    {
+        var root = await LibraryBackups.ReadAsync(backup.Path, ct).ConfigureAwait(false);
+        return (root, ImportPreview.Of(new ATextImport(root, []), Service.Current));
     }
 
     private void Publish(LibraryGroup root, string? error)

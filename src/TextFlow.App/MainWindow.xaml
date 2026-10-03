@@ -80,6 +80,10 @@
                                     <MenuFlyoutItem Text="Importar copia de TextFlow…" Click="OnImportLibraryFile">
                                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B5;" /></MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="Restaurar copia de seguridad…" Click="OnRestoreBackup">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                 </MenuFlyout>
                             </DropDownButton.Flyout>
                         </DropDownButton>

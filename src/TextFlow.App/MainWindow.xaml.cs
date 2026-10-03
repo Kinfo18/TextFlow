@@ -66,7 +66,7 @@ public sealed partial class MainWindow : Window
             if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
             {
                 var (import, preview) = await library.PreviewATextAsync(path, CancellationToken.None);
-                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, Path.GetFileName(path), preview))
+                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, $"Importar «{Path.GetFileName(path)}»", preview))
                 {
                     await App.Current.ChooseLibraryAsync(path, import);
                 }
@@ -126,7 +126,7 @@ public sealed partial class MainWindow : Window
             {
                 var (root, preview) = await library.PreviewLibraryFileAsync(path, CancellationToken.None);
                 var following = library.Status.SourcePath is { } source ? Path.GetFileName(source) : null;
-                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, Path.GetFileName(path), preview, following))
+                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, $"Importar «{Path.GetFileName(path)}»", preview, following))
                 {
                     await App.Current.ImportLibraryFileAsync(root);
                 }
@@ -137,6 +137,36 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             _actionError = $"No se pudo importar: {ex.Message}";
+            App.Current.RecordFault(ex);
+        }
+        finally
+        {
+            Refresh();
+        }
+    }
+
+    private async void OnRestoreBackup(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (App.Current.Library is not { } library
+                || await ImportDialog.PickBackupAsync(Content.XamlRoot, library.ListBackups()) is not { } backup)
+            {
+                return;
+            }
+
+            var (root, preview) = await library.PreviewBackupAsync(backup, CancellationToken.None);
+            var following = library.Status.SourcePath is { } source ? Path.GetFileName(source) : null;
+            var title = $"Restaurar la copia del {backup.CreatedAt.ToString("d 'de' MMMM, HH:mm", System.Globalization.CultureInfo.CurrentCulture)}";
+            if (await ImportDialog.ConfirmAsync(Content.XamlRoot, title, preview, following))
+            {
+                await App.Current.ImportLibraryFileAsync(root);
+                _actionError = "Copia restaurada. La biblioteca anterior quedó guardada como otra copia.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"No se pudo restaurar: {ex.Message}";
             App.Current.RecordFault(ex);
         }
         finally
