@@ -31,6 +31,9 @@ public interface IExpansionFeedback
 {
     /// <returns>False if disabled or Windows refused to play.</returns>
     bool Play();
+
+    /// <summary>Keeps an idle audio endpoint awake while the user types (inaudible), so the next chime is not swallowed.</summary>
+    void Warm();
 }
 
 /// <summary>Fallback anchor when the target exposes no caret (some browsers, VS Code).</summary>

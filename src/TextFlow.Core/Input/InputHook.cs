@@ -11,6 +11,9 @@ public sealed record TriggerTyped(TriggerMatch Match, nint ForegroundWindow) : H
 
 public sealed record ForegroundChanged(nint Window) : HookEvent;
 
+/// <summary>The user is typing (throttled to one every few seconds, no content): time to wake the audio device.</summary>
+public sealed record TypingActivity : HookEvent;
+
 /// <summary>
 /// An ambiguous trigger ("cp" while "cp1" exists) is waiting. A menu trigger can open its menu right away:
 /// in <see cref="IInputHook.MenuMode"/> a key that continues a longer trigger still fires it. Otherwise call

@@ -132,6 +132,10 @@ internal sealed class FakeFeedback : IExpansionFeedback
 {
     public int Plays { get; private set; }
 
+    public int Warms { get; private set; }
+
+    public void Warm() => Warms++;
+
     public bool Play()
     {
         Plays++;

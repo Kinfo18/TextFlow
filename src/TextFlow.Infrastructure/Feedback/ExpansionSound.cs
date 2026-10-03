@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using TextFlow.Core.Engine;
 using TextFlow.Core.Feedback;
 using Windows.Win32;
@@ -12,9 +13,18 @@ namespace TextFlow.Infrastructure.Feedback;
 /// </summary>
 public sealed class ExpansionSound : IExpansionFeedback
 {
+    /// <summary>Long enough for slow endpoints to wake (the chime was lost after ~10 s idle on the dev laptop).</summary>
+    private static readonly TimeSpan WakeLength = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>A sound within this window already keeps the endpoint awake; never cut a chime short with noise.</summary>
+    private static readonly TimeSpan WarmCooldown = TimeSpan.FromSeconds(3);
+
+    private static readonly byte[] WakeNoise = Pin(ChimeSynth.CreateWakeNoise(WakeLength));
+
     private readonly Lock _gate = new();
     private byte[] _chime;
     private double _volume;
+    private long _lastSoundAt;
 
     /// <param name="volume">0-1, see <see cref="Volume"/>.</param>
     public ExpansionSound(double volume = 1.0)
@@ -53,12 +63,36 @@ public sealed class ExpansionSound : IExpansionFeedback
 
         lock (_gate)
         {
+            _lastSoundAt = Stopwatch.GetTimestamp();
             fixed (byte* wav = _chime)
             {
                 return PInvoke.PlaySound(
                     (char*)wav,
                     default,
                     SND_FLAGS.SND_MEMORY | SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_NODEFAULT);
+            }
+        }
+    }
+
+    /// <summary>Plays inaudible noise unless a sound played very recently (see <see cref="WarmCooldown"/>).</summary>
+    public unsafe void Warm()
+    {
+        if (!Enabled || _volume <= 0)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (_lastSoundAt != 0 && Stopwatch.GetElapsedTime(_lastSoundAt) < WarmCooldown)
+            {
+                return;
+            }
+
+            _lastSoundAt = Stopwatch.GetTimestamp();
+            fixed (byte* wav = WakeNoise)
+            {
+                PInvoke.PlaySound((char*)wav, default, SND_FLAGS.SND_MEMORY | SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_NODEFAULT);
             }
         }
     }

@@ -425,6 +425,17 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TypingActivity_WarmsTheAudioDevice_SoTheFirstChimeAfterIdleIsHeard()
+    {
+        await StartAsync();
+
+        await TypeAsync(new TypingActivity());
+
+        Assert.Equal(1, _feedback.Warms);
+        Assert.Equal(0, _feedback.Plays);
+    }
+
+    [Fact]
     public async Task Diagnostics_NeverContainSnippetContent()
     {
         await StartAsync();

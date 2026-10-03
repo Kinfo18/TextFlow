@@ -30,9 +30,22 @@ public static class ChimeSynth
     public static byte[] CreateExpansionChime(double volume = 1.0)
     {
         var level = Math.Clamp(volume, 0, 1);
-        var samples = (level > 0 ? WakeUpNoise() : Enumerable.Repeat((short)0, (int)(LeadIn.TotalSeconds * SampleRate)))
+        var leadIn = (int)(LeadIn.TotalSeconds * SampleRate);
+        var samples = (level > 0 ? WakeUpNoise(leadIn) : Enumerable.Repeat((short)0, leadIn))
             .Concat(Notes.SelectMany(note => Tone(note.Frequency, note.Seconds, note.Gain * level)))
             .ToArray();
+        return ToWav(samples);
+    }
+
+    /// <summary>
+    /// Inaudible noise played while the user types, so a sleeping audio endpoint is already awake when the chime
+    /// comes: on some laptops waking takes longer than <see cref="LeadIn"/> and the whole chime was lost.
+    /// </summary>
+    public static byte[] CreateWakeNoise(TimeSpan duration) =>
+        ToWav(WakeUpNoise((int)(duration.TotalSeconds * SampleRate)).ToArray());
+
+    private static byte[] ToWav(short[] samples)
+    {
         var wav = new byte[HeaderBytes + (samples.Length * 2)];
         WriteHeader(wav, samples.Length * 2);
 
@@ -45,9 +58,8 @@ public static class ChimeSynth
     }
 
     /// <summary>Deterministic ±6 LSB noise (≈ -72 dBFS): keeps the endpoint from treating it as silence.</summary>
-    private static IEnumerable<short> WakeUpNoise()
+    private static IEnumerable<short> WakeUpNoise(int count)
     {
-        var count = (int)(LeadIn.TotalSeconds * SampleRate);
         var state = 0x2545F491u;
         for (var i = 0; i < count; i++)
         {

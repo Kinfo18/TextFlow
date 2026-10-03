@@ -202,11 +202,18 @@ public sealed class ExpansionEngine
         MenuKeyPressed key when _open is not null => SendToMenu(key.Input),
         MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
         ForegroundChanged => HandleForegroundChangedAsync(),
+        TypingActivity => WarmFeedback(),
         MenuFinished finished when _open?.Session == finished.Session => FinishMenuAsync(finished.Step),
         PendingElapsed elapsed => _hook.FlushPendingAsync(elapsed.Version),
         PauseChanged change => ApplyPauseAsync(change.Paused),
         _ => Task.CompletedTask, // stale menu result, or menu input with no menu
     };
+
+    private Task WarmFeedback()
+    {
+        _feedback.Warm();
+        return Task.CompletedTask;
+    }
 
     private Task HandlePendingAsync(TriggerPending pending)
     {

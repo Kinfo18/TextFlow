@@ -39,7 +39,11 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
     private char? _pendingDeadKey;
     private volatile bool _captureEnabled;
     private volatile bool _menuMode;
+    /// <summary>At most one <see cref="TypingActivity"/> per interval: enough to keep audio awake, cheap for the hook.</summary>
+    private static readonly long ActivityInterval = Stopwatch.Frequency * 4;
+
     private long _keyEvents;
+    private long _lastActivityAt;
     private long _maxCallbackTicks;
 
     public KeyboardHook(TriggerMatcher matcher)
@@ -183,6 +187,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
             }
 
             Interlocked.Increment(ref _keyEvents);
+            ReportActivity(started);
             return _menuMode
                 ? ProcessMenuKey((VIRTUAL_KEY)key->vkCode, key->scanCode)
                 : ProcessKeyDown((VIRTUAL_KEY)key->vkCode, key->scanCode);
@@ -194,6 +199,15 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
             {
                 Interlocked.Exchange(ref _maxCallbackTicks, elapsed);
             }
+        }
+    }
+
+    private void ReportActivity(long now)
+    {
+        if (now - _lastActivityAt >= ActivityInterval)
+        {
+            _lastActivityAt = now;
+            _events.Writer.TryWrite(new TypingActivity());
         }
     }
 

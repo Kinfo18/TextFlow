@@ -47,6 +47,17 @@ public class ChimeSynthTests
     }
 
     [Fact]
+    public void WakeNoise_IsInaudibleButNotSilent_ForTheRequestedDuration()
+    {
+        var wav = ChimeSynth.CreateWakeNoise(TimeSpan.FromMilliseconds(400));
+        var samples = Samples(wav);
+
+        Assert.Equal(44_100 * 400 / 1000, samples.Length);
+        Assert.Contains(samples, s => s != 0);
+        Assert.All(samples, s => Assert.InRange(s, -8, 8));
+    }
+
+    [Fact]
     public void Chime_IsSoft_AndEndsInSilence()
     {
         var samples = Enumerable.Range(0, (Wav.Length - 44) / 2)
