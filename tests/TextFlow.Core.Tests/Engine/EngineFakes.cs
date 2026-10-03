@@ -17,6 +17,28 @@ internal sealed class FakeHook : IInputHook
 
     public bool CaptureEnabled { get; set; }
 
+    /// <summary>Like KeyboardHook: bumped by every focus or foreground change.</summary>
+    public int FocusVersion { get; set; }
+
+    public bool TryEnableCapture(int focusVersion)
+    {
+        if (focusVersion != FocusVersion)
+        {
+            return false;
+        }
+
+        CaptureEnabled = true;
+        return true;
+    }
+
+    /// <summary>Raises a focus change the way the hook does: version bump, capture off at once.</summary>
+    public void RaiseFocusChange(HookEvent evt)
+    {
+        FocusVersion++;
+        CaptureEnabled = false;
+        Raise(evt);
+    }
+
     /// <summary>Like KeyboardHook: turning menu mode off clears the matcher, including a pending trigger.</summary>
     public bool MenuMode
     {
@@ -68,7 +90,17 @@ internal sealed class FakeResolver : ITargetResolver
 
     public ActiveTarget? Target { get; set; } = Notepad;
 
-    public ActiveTarget? CaptureTarget() => Target;
+    public int Captures { get; private set; }
+
+    /// <summary>Runs inside CaptureTarget: simulates something happening while UIA is busy.</summary>
+    public Action? DuringCapture { get; set; }
+
+    public ActiveTarget? CaptureTarget()
+    {
+        Captures++;
+        DuringCapture?.Invoke();
+        return Target;
+    }
 
     public TargetValidation ValidateTarget(ActiveTarget target) => TargetValidation.Valid;
 }

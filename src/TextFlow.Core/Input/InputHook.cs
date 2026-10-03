@@ -11,6 +11,12 @@ public sealed record TriggerTyped(TriggerMatch Match, nint ForegroundWindow) : H
 
 public sealed record ForegroundChanged(nint Window) : HookEvent;
 
+/// <summary>
+/// Keyboard focus moved inside the foreground window (EVENT_OBJECT_FOCUS), e.g. from the user name to the password
+/// field of a web login. Capture is already off: the engine re-evaluates the policy (risk R4).
+/// </summary>
+public sealed record FocusChanged(nint Window) : HookEvent;
+
 /// <summary>The user is typing (throttled to one every few seconds, no content): time to wake the audio device.</summary>
 public sealed record TypingActivity : HookEvent;
 
@@ -38,6 +44,15 @@ public interface IInputHook
 
     /// <summary>False while paused or when the foreground app is excluded: nothing is buffered (fail closed).</summary>
     bool CaptureEnabled { get; set; }
+
+    /// <summary>Bumped by every focus or foreground change, which also turns capture off at once.</summary>
+    int FocusVersion { get; }
+
+    /// <summary>
+    /// Turns capture on only if focus has not moved since <paramref name="focusVersion"/> was read: an evaluation
+    /// that raced with a newer focus change (maybe into a password field) must not re-enable capture.
+    /// </summary>
+    bool TryEnableCapture(int focusVersion);
 
     /// <summary>While true, navigation keys go to the open menu instead of the target.</summary>
     bool MenuMode { get; set; }

@@ -202,6 +202,7 @@ public sealed class ExpansionEngine
         MenuKeyPressed key when _open is not null => SendToMenu(key.Input),
         MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
         ForegroundChanged => HandleForegroundChangedAsync(),
+        FocusChanged when _open is null => RefreshCaptureUnlessSupersededAsync(),
         TypingActivity => WarmFeedback(),
         MenuFinished finished when _open?.Session == finished.Session => FinishMenuAsync(finished.Step),
         PendingElapsed elapsed => _hook.FlushPendingAsync(elapsed.Version),
@@ -353,8 +354,17 @@ public sealed class ExpansionEngine
     {
         CancelMenu(MenuCloseReason.FocusChanged);
         DisposePendingTimer();
-        await RefreshCaptureAsync().ConfigureAwait(false);
+        await RefreshCaptureUnlessSupersededAsync().ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Bursts of focus events (browsers fire several per click) are evaluated once: if another focus or foreground
+    /// change is already queued, capture stays off and that one does the (UI Automation) evaluation.
+    /// </summary>
+    private Task RefreshCaptureUnlessSupersededAsync() =>
+        _hook.Events.TryPeek(out var next) && next is FocusChanged or ForegroundChanged
+            ? Task.CompletedTask
+            : RefreshCaptureAsync();
 
     private async Task ApplyPauseAsync(bool paused)
     {
@@ -393,6 +403,7 @@ public sealed class ExpansionEngine
 
     private async Task RefreshCaptureAsync()
     {
+        var focusVersion = _hook.FocusVersion;
         _hook.CaptureEnabled = false;
         if (_paused)
         {
@@ -400,7 +411,11 @@ public sealed class ExpansionEngine
         }
 
         var target = await CaptureTargetAsync().ConfigureAwait(false);
-        _hook.CaptureEnabled = target is not null && _policy.Evaluate(target, TextFlowFeature.Expansion).IsAllowed;
+        if (target is not null && _policy.Evaluate(target, TextFlowFeature.Expansion).IsAllowed)
+        {
+            _hook.TryEnableCapture(focusVersion);
+        }
+
         if (_paused)
         {
             _hook.CaptureEnabled = false; // Pause() ran while we evaluated

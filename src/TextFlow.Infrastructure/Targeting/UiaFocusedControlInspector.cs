@@ -1,6 +1,7 @@
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using TextFlow.Contracts.Targeting;
+using TextFlow.Core.Security;
 
 namespace TextFlow.Infrastructure.Targeting;
 
@@ -11,7 +12,8 @@ public interface IFocusedControlInspector
 }
 
 /// <summary>
-/// Reads focused-element metadata through UIA3. Never reads the element's value.
+/// Reads focused-element metadata through UIA3. Never reads the element's value (its label is read only to spot
+/// password fields and is not kept).
 /// UIA calls into the target process and can hang on unresponsive apps, so every call is time-boxed.
 /// </summary>
 public sealed class UiaFocusedControlInspector : IFocusedControlInspector, IDisposable
@@ -62,7 +64,9 @@ public sealed class UiaFocusedControlInspector : IFocusedControlInspector, IDisp
             ControlType: props.ControlType.ValueOrDefault.ToString(),
             ClassName: props.ClassName.ValueOrDefault ?? string.Empty,
             FrameworkId: props.FrameworkId.ValueOrDefault ?? string.Empty,
-            IsPassword: props.IsPassword.ValueOrDefault,
+            // "Show password" turns the field into plain text: its label/id still give it away (labels, not values).
+            IsPassword: props.IsPassword.ValueOrDefault
+                || SensitiveFieldHeuristic.LooksLikePassword(props.Name.ValueOrDefault, props.AutomationId.ValueOrDefault),
             IsReadOnly: IsReadOnly(element),
             CaretBounds: null);
     }

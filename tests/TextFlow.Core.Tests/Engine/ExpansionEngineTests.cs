@@ -436,6 +436,66 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task FocusMovesToAPasswordField_CaptureStopsUntilFocusLeavesIt()
+    {
+        await StartAsync();
+        Assert.True(_hook.CaptureEnabled);
+
+        _resolver.Target = FakeResolver.Notepad with { Control = FakeResolver.Notepad.Control with { IsPassword = true } };
+        _hook.RaiseFocusChange(new FocusChanged(FakeResolver.Window));
+        await SettleAsync();
+        Assert.False(_hook.CaptureEnabled);
+
+        _resolver.Target = FakeResolver.Notepad;
+        _hook.RaiseFocusChange(new FocusChanged(FakeResolver.Window));
+        await SettleAsync();
+        Assert.True(_hook.CaptureEnabled);
+    }
+
+    [Fact]
+    public async Task FocusChangingWhileEvaluating_LeavesCaptureOff_ForTheNextEvaluation()
+    {
+        await StartAsync();
+        _resolver.DuringCapture = () =>
+        {
+            _resolver.DuringCapture = null;
+            _hook.FocusVersion++; // the user tabbed into the password field meanwhile (event still to come)
+        };
+
+        _hook.RaiseFocusChange(new FocusChanged(FakeResolver.Window));
+        await SettleAsync();
+
+        Assert.False(_hook.CaptureEnabled); // a stale "allowed" must never re-enable capture
+    }
+
+    [Fact]
+    public async Task BurstOfFocusChanges_IsEvaluatedOnce()
+    {
+        await StartAsync();
+        var before = _resolver.Captures;
+
+        _hook.RaiseFocusChange(new FocusChanged(FakeResolver.Window));
+        _hook.RaiseFocusChange(new FocusChanged(FakeResolver.Window));
+        _hook.RaiseFocusChange(new FocusChanged(FakeResolver.Window));
+        await SettleAsync();
+
+        Assert.Equal(1, _resolver.Captures - before);
+        Assert.True(_hook.CaptureEnabled);
+    }
+
+    [Fact]
+    public async Task FocusChange_DoesNotCloseAnOpenMenu()
+    {
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("LC"), FakeResolver.Window));
+
+        await TypeAsync(new FocusChanged(FakeResolver.Window));
+
+        Assert.Equal(0, _menu.Cancels);
+        Assert.True(_hook.MenuMode);
+    }
+
+    [Fact]
     public async Task Diagnostics_NeverContainSnippetContent()
     {
         await StartAsync();

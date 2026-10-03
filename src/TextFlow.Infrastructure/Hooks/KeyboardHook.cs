@@ -36,6 +36,8 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
     private HHOOK _keyboardHook;
     private HHOOK _mouseHook;
     private UnhookWinEventSafeHandle? _foregroundHook;
+    private UnhookWinEventSafeHandle? _focusHook;
+    private int _focusVersion;
     private char? _pendingDeadKey;
     private volatile bool _captureEnabled;
     private volatile bool _menuMode;
@@ -80,6 +82,22 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
                 _thread.InvokeAsync(ResetState);
             }
         }
+    }
+
+    public int FocusVersion => Volatile.Read(ref _focusVersion);
+
+    public bool TryEnableCapture(int focusVersion)
+    {
+        _captureEnabled = true;
+        if (Volatile.Read(ref _focusVersion) == focusVersion)
+        {
+            return true;
+        }
+
+        // Focus moved while the engine evaluated the old control: the hook thread already turned capture off for
+        // the new one, and the engine will evaluate it next. Undo our stale "on".
+        _captureEnabled = false;
+        return false;
     }
 
     /// <summary>
@@ -149,7 +167,10 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
         _foregroundHook = PInvoke.SetWinEventHook(
             PInvoke.EVENT_SYSTEM_FOREGROUND, PInvoke.EVENT_SYSTEM_FOREGROUND, default, &ForegroundProc, 0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
 
-        if (_foregroundHook is null || _foregroundHook.IsInvalid)
+        _focusHook = PInvoke.SetWinEventHook(
+            PInvoke.EVENT_OBJECT_FOCUS, PInvoke.EVENT_OBJECT_FOCUS, default, &FocusProc, 0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
+
+        if (_foregroundHook is null || _foregroundHook.IsInvalid || _focusHook is null || _focusHook.IsInvalid)
         {
             throw new InvalidOperationException($"SetWinEventHook failed: {Marshal.GetLastPInvokeError()}");
         }
@@ -209,9 +230,29 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
             return;
         }
 
+        Interlocked.Increment(ref self._focusVersion);
         self._captureEnabled = false; // fail closed until the engine has evaluated the new foreground
         self.ResetState();
         self._events.Writer.TryWrite(new ForegroundChanged((nint)hwnd.Value));
+    }
+
+    /// <summary>
+    /// Focus moved inside a window (R4: user name → password field of a web login). Fail closed until the engine
+    /// re-evaluated the focused control. Ignored while a group menu is open: it owns the keys and closes itself.
+    /// </summary>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static void FocusProc(HWINEVENTHOOK hook, uint @event, HWND hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        var self = s_instance;
+        if (self is null || self._menuMode)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref self._focusVersion);
+        self._captureEnabled = false;
+        self.ResetState();
+        self._events.Writer.TryWrite(new FocusChanged((nint)hwnd.Value));
     }
 
     private bool HandleKey(uint message, KBDLLHOOKSTRUCT* key)
@@ -429,6 +470,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
             PInvoke.UnhookWindowsHookEx(_keyboardHook);
             PInvoke.UnhookWindowsHookEx(_mouseHook);
             _foregroundHook?.Dispose();
+            _focusHook?.Dispose();
         }).Wait(TimeSpan.FromSeconds(1));
         _thread.Dispose();
         _events.Writer.TryComplete();
