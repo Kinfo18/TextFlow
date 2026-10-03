@@ -71,12 +71,21 @@ public sealed class LibraryHost : IAsyncDisposable
         return Service.Current;
     }
 
-    /// <summary>Imports another aText backup and follows it from now on.</summary>
-    public async Task UseATextSourceAsync(string path, CancellationToken ct)
+    /// <summary>Reads a backup and reports what importing it would change, without writing anything (H2.3).</summary>
+    /// <exception cref="IOException">The file cannot be read.</exception>
+    /// <exception cref="InvalidDataException">The file is not an aText backup.</exception>
+    public async Task<(ATextImport Import, ImportPreview Preview)> PreviewATextAsync(string path, CancellationToken ct)
+    {
+        var import = await ReadAsync(path, ct).ConfigureAwait(false);
+        return (import, ImportPreview.Of(import, Service.Current));
+    }
+
+    /// <summary>Applies a previewed backup (snapshot first) and follows that file from now on.</summary>
+    public async Task UseATextSourceAsync(string path, ATextImport import, CancellationToken ct)
     {
         _watcher?.Dispose();
         Status = Status with { SourcePath = path };
-        await ImportAsync(path, ct).ConfigureAwait(false);
+        await ApplyAsync(import, ct).ConfigureAwait(false);
         _watcher = Watch(path);
     }
 
@@ -90,8 +99,7 @@ public sealed class LibraryHost : IAsyncDisposable
         ATextImport import;
         try
         {
-            await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            import = ATextBackupReader.Read(file);
+            import = await ReadAsync(path, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
@@ -99,6 +107,20 @@ public sealed class LibraryHost : IAsyncDisposable
             return;
         }
 
+        await ApplyAsync(import, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<ATextImport> ReadAsync(string path, CancellationToken ct)
+    {
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer, ct).ConfigureAwait(false); // read fast, parse off the file handle
+        buffer.Position = 0;
+        return ATextBackupReader.Read(buffer);
+    }
+
+    private async Task ApplyAsync(ATextImport import, CancellationToken ct)
+    {
         if (!Service.IsEmpty)
         {
             await BackupAsync(ct).ConfigureAwait(false);

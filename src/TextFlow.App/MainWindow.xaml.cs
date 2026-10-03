@@ -63,9 +63,13 @@ public sealed partial class MainWindow : Window
             var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
             picker.FileTypeFilter.Add(".atext");
             WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path })
+            if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
             {
-                await App.Current.ChooseLibraryAsync(path);
+                var (import, preview) = await library.PreviewATextAsync(path, CancellationToken.None);
+                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, Path.GetFileName(path), preview))
+                {
+                    await App.Current.ChooseLibraryAsync(path, import);
+                }
             }
 
             _actionError = null;

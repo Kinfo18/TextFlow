@@ -196,13 +196,13 @@ public partial class App : Application, IDisposable
     }
 
     /// <summary>Imports another aText backup and follows it from now on (Inicio → "Importar desde aText…").</summary>
-    internal async Task ChooseLibraryAsync(string path)
+    internal async Task ChooseLibraryAsync(string path, Core.Import.ATextImport import)
     {
         _settings = _settings with { ATextBackupPath = path };
         SaveSettings();
         if (_library is not null)
         {
-            await _library.UseATextSourceAsync(path, CancellationToken.None);
+            await _library.UseATextSourceAsync(path, import, CancellationToken.None);
         }
     }
 
