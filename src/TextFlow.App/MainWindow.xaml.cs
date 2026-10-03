@@ -60,6 +60,12 @@ public sealed partial class MainWindow : Window
         var state = engine.IsPaused
             ? "Expansiones en pausa. Reanúdalas desde el icono de la bandeja."
             : "Expansiones activas. Escribe una abreviatura en cualquier aplicación.";
+        var shortcut = App.Current.PauseHotkey switch
+        {
+            { Registered: true } hotkey => $"Atajo para pausar/reanudar: {hotkey.Gesture}.",
+            { } hotkey => $"El atajo {hotkey.Gesture} lo usa otra aplicación; pausa desde la bandeja.",
+            null => string.Empty,
+        };
         var library = engine.Library switch
         {
             { Error: { } error } => $"No se pudo cargar la biblioteca: {error}",
@@ -67,6 +73,6 @@ public sealed partial class MainWindow : Window
             var loaded => $"Biblioteca cargada: {loaded.Menus} menús y {loaded.Commands} comandos directos.",
         };
 
-        return $"{state}\n\n{library}";
+        return string.Join("\n\n", new[] { state, shortcut, library }.Where(s => s.Length > 0));
     }
 }

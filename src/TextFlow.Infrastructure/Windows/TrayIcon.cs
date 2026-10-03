@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using TextFlow.Core.Feedback;
 using Windows.Win32;
@@ -20,7 +19,7 @@ public enum TrayCommand
 /// <summary>
 /// Notification-area icon with the TextFlow menu (Abrir · Pausar/Reanudar · Salir). Runs on its own
 /// message-loop thread with a hidden top-level window (a message-only one would miss "TaskbarCreated",
-/// so the icon would vanish when Explorer restarts). One instance per process.
+/// so the icon would vanish when Explorer restarts).
 /// </summary>
 public sealed partial class TrayIcon : IDisposable
 {
@@ -31,30 +30,22 @@ public sealed partial class TrayIcon : IDisposable
     private const uint ExitId = 3;
     private const uint StartupId = 4;
 
-    private static TrayIcon? s_instance;
-
     private readonly MessageLoopThread _thread;
-    private readonly string _className = $"TextFlow.Tray.{Environment.ProcessId}";
-    private HWND _window;
+    private HiddenWindow? _window;
     private HICON _activeIcon;
     private HICON _pausedIcon;
     private uint _taskbarCreated;
     private static readonly TimeSpan DisposeTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan[] AddRetryDelays = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)];
 
-    private HINSTANCE _module;
     private volatile bool _paused;
     private volatile bool _startWithWindows;
+    private volatile string? _pauseShortcut;
     private volatile bool _added;
     private volatile bool _disposed;
 
     public TrayIcon()
     {
-        if (Interlocked.CompareExchange(ref s_instance, this, null) is not null)
-        {
-            throw new InvalidOperationException("Only one tray icon per process.");
-        }
-
         _thread = new MessageLoopThread("TextFlow.Tray");
         try
         {
@@ -64,7 +55,6 @@ public sealed partial class TrayIcon : IDisposable
         {
             _thread.InvokeAsync(Destroy).Wait(DisposeTimeout);
             _thread.Dispose();
-            Interlocked.CompareExchange(ref s_instance, null, this);
             throw;
         }
 
@@ -87,38 +77,19 @@ public sealed partial class TrayIcon : IDisposable
         _ = _thread.InvokeAsync(() => Notify(NotifyMessage.Modify));
     }
 
+    /// <summary>Shortcut shown right-aligned next to "Pausar/Reanudar" (null hides it).</summary>
+    public void SetPauseShortcut(string? shortcut) => _pauseShortcut = shortcut;
+
     /// <summary>Check mark of the "Iniciar con Windows" entry.</summary>
     public void SetStartWithWindows(bool enabled) => _startWithWindows = enabled;
 
-    private unsafe void Create()
+    private void Create()
     {
         var size = PInvoke.GetSystemMetricsForDpi(SYSTEM_METRICS_INDEX.SM_CXSMICON, PInvoke.GetDpiForSystem());
         _activeIcon = CreateIcon(size, paused: false);
         _pausedIcon = CreateIcon(size, paused: true);
 
-        _module = (HINSTANCE)PInvoke.GetModuleHandle((PCWSTR)null).Value;
-        fixed (char* name = _className)
-        {
-            var windowClass = new WNDCLASSEXW
-            {
-                cbSize = (uint)sizeof(WNDCLASSEXW),
-                lpfnWndProc = &WndProc,
-                hInstance = _module,
-                lpszClassName = name,
-            };
-            if (PInvoke.RegisterClassEx(windowClass) == 0)
-            {
-                throw new Win32Exception(Marshal.GetLastPInvokeError());
-            }
-
-            _window = PInvoke.CreateWindowEx(0, name, name, 0, 0, 0, 0, 0, default, default, _module, null);
-        }
-
-        if (_window.IsNull)
-        {
-            throw new Win32Exception(Marshal.GetLastPInvokeError());
-        }
-
+        _window = new HiddenWindow("Tray", messageOnly: false, (message, _, lParam) => Handle(message, lParam));
         _taskbarCreated = PInvoke.RegisterWindowMessage("TaskbarCreated");
         _added = Notify(NotifyMessage.Add);
     }
@@ -144,7 +115,7 @@ public sealed partial class TrayIcon : IDisposable
 
     private unsafe bool Notify(NotifyMessage message)
     {
-        if (_window.IsNull)
+        if (_window is null)
         {
             return false;
         }
@@ -152,7 +123,7 @@ public sealed partial class TrayIcon : IDisposable
         var data = new NotifyIconData
         {
             Size = (uint)sizeof(NotifyIconData),
-            Window = _window,
+            Window = _window.Handle,
             Id = IconId,
             Flags = NotifyIconData.FlagMessage | NotifyIconData.FlagIcon | NotifyIconData.FlagTip,
             CallbackMessage = CallbackMessage,
@@ -161,18 +132,6 @@ public sealed partial class TrayIcon : IDisposable
         var tip = _paused ? "TextFlow · en pausa" : "TextFlow · activo";
         tip.AsSpan().CopyTo(new Span<char>(data.Tip, NotifyIconData.TipLength - 1));
         return ShellNotifyIcon(message, &data);
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-    private static LRESULT WndProc(HWND hwnd, uint message, WPARAM wParam, LPARAM lParam)
-    {
-        var self = s_instance;
-        if (self is not null && self._window == hwnd && self.Handle(message, lParam))
-        {
-            return (LRESULT)0;
-        }
-
-        return PInvoke.DefWindowProc(hwnd, message, wParam, lParam);
     }
 
     private bool Handle(uint message, LPARAM lParam)
@@ -207,23 +166,25 @@ public sealed partial class TrayIcon : IDisposable
         try
         {
             Append(menu, OpenId, "Abrir TextFlow");
-            Append(menu, PauseId, _paused ? "Reanudar expansiones" : "Pausar expansiones");
+            var pause = _paused ? "Reanudar expansiones" : "Pausar expansiones";
+            Append(menu, PauseId, _pauseShortcut is { } shortcut ? $"{pause}\t{shortcut}" : pause);
             Append(menu, StartupId, "Iniciar con Windows", _startWithWindows ? MENU_ITEM_FLAGS.MF_CHECKED : 0);
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, (PCWSTR)null);
             Append(menu, ExitId, "Salir");
             PInvoke.SetMenuDefaultItem(menu, OpenId, 0);
 
             PInvoke.GetCursorPos(out var point);
-            PInvoke.SetForegroundWindow(_window); // otherwise the menu does not close when clicking elsewhere
+            var window = _window!.Handle;
+            PInvoke.SetForegroundWindow(window); // otherwise the menu does not close when clicking elsewhere
             var chosen = PInvoke.TrackPopupMenu(
                 menu,
                 TRACK_POPUP_MENU_FLAGS.TPM_RETURNCMD | TRACK_POPUP_MENU_FLAGS.TPM_RIGHTBUTTON | TRACK_POPUP_MENU_FLAGS.TPM_NONOTIFY,
                 point.X,
                 point.Y,
                 0,
-                _window,
+                window,
                 null);
-            PInvoke.PostMessage(_window, PInvoke.WM_NULL, default, default);
+            PInvoke.PostMessage(window, PInvoke.WM_NULL, default, default);
 
             switch ((uint)chosen.Value)
             {
@@ -303,32 +264,29 @@ public sealed partial class TrayIcon : IDisposable
         }
 
         _disposed = true;
-        _thread.InvokeAsync(Destroy).Wait(DisposeTimeout);
-        _thread.Dispose();
-        Interlocked.CompareExchange(ref s_instance, null, this);
-    }
-
-    private unsafe void UnregisterWindowClass()
-    {
-        fixed (char* name = _className)
+        CommandInvoked = null;
+        try
         {
-            PInvoke.UnregisterClass(name, _module);
+            _thread.InvokeAsync(Destroy).Wait(DisposeTimeout);
+        }
+        catch (AggregateException ex)
+        {
+            System.Diagnostics.Trace.TraceError($"TextFlow tray cleanup failed: {ex.InnerException?.GetType().Name}");
+        }
+        finally
+        {
+            _thread.Dispose();
         }
     }
 
     /// <summary>Releases whatever <see cref="Create"/> got to (also after a partial failure). Tray thread only.</summary>
     private void Destroy()
     {
-        if (!_window.IsNull)
+        if (_window is not null)
         {
             Notify(NotifyMessage.Delete);
-            PInvoke.DestroyWindow(_window);
-            _window = default;
-        }
-
-        if (!_module.IsNull)
-        {
-            UnregisterWindowClass();
+            _window.Dispose();
+            _window = null;
         }
 
         if (!_activeIcon.IsNull)

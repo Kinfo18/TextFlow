@@ -99,3 +99,7 @@ WM_LBUTTONUP
 WM_RBUTTONUP
 WM_NULL
 AllowSetForegroundWindow
+// Global hotkey
+RegisterHotKey
+UnregisterHotKey
+WM_HOTKEY

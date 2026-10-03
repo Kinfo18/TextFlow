@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using TextFlow.App.Engine;
 using TextFlow.App.Menu;
 using TextFlow.Core.Diagnostics;
+using TextFlow.Core.Input;
 using TextFlow.Infrastructure.Diagnostics;
 using TextFlow.Infrastructure.Windows;
 
@@ -25,6 +26,7 @@ public partial class App : Application, IDisposable
     private SingleInstance? _instance;
     private AppSettings _settings = new();
     private StartupRegistration? _startup;
+    private GlobalHotkey? _pauseHotkey;
     private MainWindow? _window;
     private bool _exiting;
 
@@ -50,6 +52,10 @@ public partial class App : Application, IDisposable
 
     /// <summary>Why startup failed ("Type: message"), shown on the Inicio page; null when it worked.</summary>
     internal string? StartupError { get; private set; }
+
+    /// <summary>Pause shortcut as shown to the user, and whether Windows let TextFlow have it.</summary>
+    internal (string Gesture, bool Registered)? PauseHotkey =>
+        _pauseHotkey is null ? null : (_pauseHotkey.Gesture.ToString(), _pauseHotkey.IsRegistered);
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
@@ -115,6 +121,33 @@ public partial class App : Application, IDisposable
 
         _startup = new StartupRegistration(InstanceName, Environment.ProcessPath!);
         ApplyStartWithWindows(_settings.StartWithWindows);
+
+        StartPauseHotkey(ui, tray);
+    }
+
+    /// <summary>Optional: if it cannot be created TextFlow keeps running and pauses from the tray.</summary>
+    private void StartPauseHotkey(DispatcherQueue ui, TrayIcon tray)
+    {
+        var gesture = HotkeyGesture.TryParse(_settings.PauseHotkey, out var configured) ? configured! : HotkeyGesture.DefaultPause;
+        try
+        {
+            _pauseHotkey = new GlobalHotkey(gesture);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            RecordFault(ex);
+            tray.SetPauseShortcut(null);
+            return;
+        }
+
+        _pauseHotkey.Pressed += () => ui.TryEnqueue(() =>
+        {
+            if (!_exiting)
+            {
+                _engine?.TogglePause();
+            }
+        });
+        tray.SetPauseShortcut(_pauseHotkey.IsRegistered ? gesture.ToString() : null);
     }
 
     /// <summary>Syncs the Run entry (also repairs its path if the app moved) and the tray check mark.</summary>
@@ -205,6 +238,7 @@ public partial class App : Application, IDisposable
         _exiting = true;
         try
         {
+            _pauseHotkey?.Dispose();
             _tray?.Dispose();
             if (_engine is not null)
             {
@@ -241,6 +275,7 @@ public partial class App : Application, IDisposable
 
     public void Dispose()
     {
+        _pauseHotkey?.Dispose();
         _tray?.Dispose();
         _engine?.DisposeAsync().AsTask().GetAwaiter().GetResult(); // no-op after ExitAsync
         _host.Dispose();
