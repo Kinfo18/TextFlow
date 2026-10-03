@@ -1,6 +1,7 @@
 using System.Text;
 using K4os.Compression.LZ4.Streams;
 using TextFlow.Core.Import;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Tests.Import;
 
@@ -47,9 +48,9 @@ public class ATextBackupReaderTests
 
     private static ATextImport Read(string library = Library) => ATextBackupReader.Read(new MemoryStream(Backup(library)));
 
-    private static ImportedGroup Group(ATextImport import, string id) => Flatten(import.Root).Single(g => g.Id == id);
+    private static LibraryGroup Group(ATextImport import, string id) => Flatten(import.Root).Single(g => g.Id == id);
 
-    private static IEnumerable<ImportedGroup> Flatten(ImportedGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
+    private static IEnumerable<LibraryGroup> Flatten(LibraryGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
 
     [Fact]
     public void Read_ReturnsGroupTree_WithNamesAndAbbreviations()

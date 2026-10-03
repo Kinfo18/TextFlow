@@ -1,5 +1,6 @@
 using System.Text.Json;
 using K4os.Compression.LZ4.Streams;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Import;
 
@@ -43,7 +44,7 @@ public static class ATextBackupReader
         var items = json.RootElement.EnumerateArray().ToArray();
         var root = items is [var single] && IsGroup(single)
             ? ReadGroup(single, ignoreCase, issues)
-            : new ImportedGroup("root", "aText", null, ignoreCase, items.Where(IsGroup).Select(g => ReadGroup(g, ignoreCase, issues)).ToArray(),
+            : new LibraryGroup("root", "aText", null, ignoreCase, items.Where(IsGroup).Select(g => ReadGroup(g, ignoreCase, issues)).ToArray(),
                 items.Where(i => !IsGroup(i)).Select(s => ReadSnippet(s, issues)).ToArray());
 
         ReportDuplicateAbbreviations(root, issues);
@@ -103,7 +104,7 @@ public static class ATextBackupReader
         item.ValueKind == JsonValueKind.Object
         && item.TryGetProperty("99", out var marker) && marker.ValueKind == JsonValueKind.Number && marker.GetInt32() == 1;
 
-    private static ImportedGroup ReadGroup(JsonElement item, bool ignoreCase, List<ImportIssue> issues)
+    private static LibraryGroup ReadGroup(JsonElement item, bool ignoreCase, List<ImportIssue> issues)
     {
         var id = String(item, "0") ?? Guid.NewGuid().ToString();
         ReportUnknownKeys(item, id, GroupKeys, issues);
@@ -113,7 +114,7 @@ public static class ATextBackupReader
             : [];
         var abbreviation = String(item, "14");
 
-        return new ImportedGroup(
+        return new LibraryGroup(
             id,
             String(item, "2") ?? UnnamedSnippet,
             string.IsNullOrWhiteSpace(abbreviation) ? null : abbreviation,
@@ -122,7 +123,7 @@ public static class ATextBackupReader
             children.Where(c => !IsGroup(c)).Select(s => ReadSnippet(s, issues)).ToArray());
     }
 
-    private static ImportedSnippet ReadSnippet(JsonElement item, List<ImportIssue> issues)
+    private static LibrarySnippet ReadSnippet(JsonElement item, List<ImportIssue> issues)
     {
         var id = String(item, "0") ?? Guid.NewGuid().ToString();
         ReportUnknownKeys(item, id, SnippetKeys, issues);
@@ -148,7 +149,7 @@ public static class ATextBackupReader
             issues.Add(new ImportIssue(ImportIssueCode.RichTextImportedAsPlain, id, $"'{name}' was rich text; formatting is dropped."));
         }
 
-        return new ImportedSnippet(id, name, content ?? string.Empty, isRichText, abbreviations);
+        return new LibrarySnippet(id, name, content ?? string.Empty, isRichText, abbreviations);
     }
 
     private static string Preview(string? content)
@@ -171,9 +172,9 @@ public static class ATextBackupReader
         }
     }
 
-    private static void ReportDuplicateAbbreviations(ImportedGroup root, List<ImportIssue> issues)
+    private static void ReportDuplicateAbbreviations(LibraryGroup root, List<ImportIssue> issues)
     {
-        var seen = new List<ImportedGroup>();
+        var seen = new List<LibraryGroup>();
         foreach (var group in Flatten(root).Where(g => g.Abbreviation is not null))
         {
             var clash = seen.FirstOrDefault(s => string.Equals(
@@ -192,7 +193,7 @@ public static class ATextBackupReader
         }
     }
 
-    private static IEnumerable<ImportedGroup> Flatten(ImportedGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
+    private static IEnumerable<LibraryGroup> Flatten(LibraryGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
 
     private static string? String(JsonElement item, string key) =>
         item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

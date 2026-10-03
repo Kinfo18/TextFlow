@@ -11,6 +11,7 @@ using TextFlow.Infrastructure.Feedback;
 using TextFlow.Infrastructure.Hooks;
 using TextFlow.Infrastructure.Input;
 using TextFlow.Infrastructure.Targeting;
+using TextFlow.Core.Library;
 
 namespace TextFlow.App.Engine;
 
@@ -146,7 +147,7 @@ public sealed class EngineHost : IAsyncDisposable
     {
         if (current.Path is not { } path)
         {
-            await _engine.LoadAsync(LibraryIndex.Build(new ImportedGroup("root", "root", null, true, [], []))).ConfigureAwait(false);
+            await _engine.LoadAsync(LibraryIndex.Build(new LibraryGroup("root", "root", null, true, [], []))).ConfigureAwait(false);
             return LibraryStatus.NotConfigured;
         }
 

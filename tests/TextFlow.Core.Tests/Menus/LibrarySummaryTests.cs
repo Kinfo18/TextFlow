@@ -1,22 +1,23 @@
 using TextFlow.Core.Import;
 using TextFlow.Core.Menus;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Tests.Menus;
 
 public sealed class LibrarySummaryTests
 {
-    private static ImportedSnippet Snippet(string abbreviation, string content = "x") =>
+    private static LibrarySnippet Snippet(string abbreviation, string content = "x") =>
         new($"s-{abbreviation}", abbreviation, content, IsRichText: false, [abbreviation]);
 
     [Fact]
     public void Of_CountsMenusCommandsDirectTriggersAndIssues()
     {
-        var root = new ImportedGroup("root", "root", null, true,
+        var root = new LibraryGroup("root", "root", null, true,
             [
-                new ImportedGroup("g1", "Local cerrado", "LC", true,
-                    [new ImportedGroup("g1a", "Sub", null, true, [], [Snippet("Nota informativa", content: "")])],
+                new LibraryGroup("g1", "Local cerrado", "LC", true,
+                    [new LibraryGroup("g1a", "Sub", null, true, [], [Snippet("Nota informativa", content: "")])],
                     [Snippet("nc1"), Snippet("Frase con espacios larga")]),
-                new ImportedGroup("g2", "Temples", null, true, [], [Snippet("cc"), Snippet("dir1")]),
+                new LibraryGroup("g2", "Temples", null, true, [], [Snippet("cc"), Snippet("dir1")]),
             ],
             []);
         var import = new ATextImport(root, [new ImportIssue(ImportIssueCode.RichTextImportedAsPlain, "s-cc", "cc")]);

@@ -8,6 +8,7 @@ using TextFlow.Core.Import;
 using TextFlow.Core.Input;
 using TextFlow.Core.Menus;
 using TextFlow.Core.Security;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Tests.Engine;
 
@@ -27,11 +28,11 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
 
     public ExpansionEngineTests()
     {
-        var root = new ImportedGroup("root", "root", null, true,
+        var root = new LibraryGroup("root", "root", null, true,
             [
-                new ImportedGroup("g-lc", "Local cerrado", "LC", true, [], [Snippet("s-nc", "No confirmado", "texto nc")]),
-                new ImportedGroup("g-cp", "Completa pasos", "cp", true, [], [Snippet("s-cp1", "cp1", "texto cp1")]),
-                new ImportedGroup("g-t1", "Temples", null, true, [], [Snippet("s-cc", "cc", "texto cc"), Snippet("s-dir1", "dir1", "d1"), Snippet("s-dir12", "dir12", "d12")]),
+                new LibraryGroup("g-lc", "Local cerrado", "LC", true, [], [Snippet("s-nc", "No confirmado", "texto nc")]),
+                new LibraryGroup("g-cp", "Completa pasos", "cp", true, [], [Snippet("s-cp1", "cp1", "texto cp1")]),
+                new LibraryGroup("g-t1", "Temples", null, true, [], [Snippet("s-cc", "cc", "texto cc"), Snippet("s-dir1", "dir1", "d1"), Snippet("s-dir12", "dir12", "d12")]),
             ],
             []);
         _index = LibraryIndex.Build(root);
@@ -40,7 +41,7 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
             _sink, _time, ExpansionEngineOptions.Default);
     }
 
-    private static ImportedSnippet Snippet(string id, string abbreviation, string content) =>
+    private static LibrarySnippet Snippet(string id, string abbreviation, string content) =>
         new(id, abbreviation, content, IsRichText: false, [abbreviation]);
 
     private string IdOf(string trigger) => _index.Triggers.Single(t => t.Trigger == trigger).SnippetId;

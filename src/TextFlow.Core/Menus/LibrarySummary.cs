@@ -1,4 +1,5 @@
 using TextFlow.Core.Import;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Menus;
 
@@ -19,5 +20,5 @@ public sealed record LibrarySummary(int Menus, int Commands, int DirectTriggers,
             import.Issues.Count);
     }
 
-    private static int CountSnippets(ImportedGroup group) => group.Snippets.Count + group.Groups.Sum(CountSnippets);
+    private static int CountSnippets(LibraryGroup group) => group.Snippets.Count + group.Groups.Sum(CountSnippets);
 }

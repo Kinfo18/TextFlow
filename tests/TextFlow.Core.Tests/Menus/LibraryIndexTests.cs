@@ -1,21 +1,22 @@
 using TextFlow.Core.Expansion;
 using TextFlow.Core.Import;
 using TextFlow.Core.Menus;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Tests.Menus;
 
 public class LibraryIndexTests
 {
-    private static ImportedSnippet Snippet(string name, string content = "x") => new($"s-{name}", name, content, IsRichText: false, [name]);
+    private static LibrarySnippet Snippet(string name, string content = "x") => new($"s-{name}", name, content, IsRichText: false, [name]);
 
-    private static ImportedSnippet Command(string abbreviation, string content = "texto") =>
+    private static LibrarySnippet Command(string abbreviation, string content = "texto") =>
         new($"s-{abbreviation}", abbreviation, content, IsRichText: false, [abbreviation]);
 
-    private static ImportedGroup Group(
-        string name, string? abbreviation, bool ignoreCase = true, ImportedGroup[]? groups = null, ImportedSnippet[]? snippets = null) =>
+    private static LibraryGroup Group(
+        string name, string? abbreviation, bool ignoreCase = true, LibraryGroup[]? groups = null, LibrarySnippet[]? snippets = null) =>
         new($"g-{name}", name, abbreviation, ignoreCase, groups ?? [], snippets ?? []);
 
-    private static ImportedGroup Library() => Group("root", null, groups:
+    private static LibraryGroup Library() => Group("root", null, groups:
     [
         Group("Local Cerrado", "LC", snippets: [Snippet("No confirmado"), Snippet("Nota", content: "")]),
         Group("Orden demorada", "OD", snippets: [Snippet("Demora")]),
@@ -25,6 +26,28 @@ public class LibraryIndexTests
         Group("Temples", "T1", snippets: [Command("cc", "mensaje cc"), Command("s1"), Command("od1")]),
         Group("Exacto", null, ignoreCase: false, snippets: [Command("Accept")]),
     ]);
+
+    [Fact]
+    public void DisabledSnippet_DoesNotExpand_ButStaysInItsMenu()
+    {
+        var off = Command("zz") with { Enabled = false };
+        var root = Group("root", null, groups: [Group("Temples", "T1", snippets: [off])]);
+
+        var index = LibraryIndex.Build(root);
+
+        Assert.DoesNotContain(index.Triggers, t => t.Trigger == "zz");
+        Assert.Contains(index.FindMenu(index.Menus.Single().Id)!.Entries, e => e.Label == "zz");
+    }
+
+    [Fact]
+    public void AfterDelimiterSnippet_GetsAnAfterDelimiterTrigger()
+    {
+        var root = Group("root", null, groups: [Group("Firmas", null, snippets: [Command("sig") with { Mode = SnippetMode.AfterDelimiter }])]);
+
+        var trigger = Assert.Single(LibraryIndex.Build(root).Triggers);
+
+        Assert.Equal(TriggerMode.AfterDelimiter, trigger.Mode);
+    }
 
     [Fact]
     public void Build_CreatesOneMenuPerAbbreviation_IncludingNestedGroups()

@@ -13,6 +13,7 @@ using TextFlow.Core.Input;
 using TextFlow.Infrastructure.Hooks;
 using TextFlow.Infrastructure.Input;
 using TextFlow.Infrastructure.Targeting;
+using TextFlow.Core.Library;
 
 Console.OutputEncoding = Encoding.UTF8;
 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // physical pixels for caret coordinates and the menu popup
@@ -301,7 +302,7 @@ internal static class ImportSpike
         return 0;
     }
 
-    private static void Print(ImportedGroup group, int depth)
+    private static void Print(LibraryGroup group, int depth)
     {
         var abbreviation = group.Abbreviation is null ? string.Empty : $"  [{group.Abbreviation}]";
         Console.WriteLine($"{new string(' ', depth * 2)}{group.Name}{abbreviation}  ({group.Snippets.Count} snippets)");
@@ -311,5 +312,5 @@ internal static class ImportSpike
         }
     }
 
-    private static IEnumerable<ImportedGroup> Flatten(ImportedGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
+    private static IEnumerable<LibraryGroup> Flatten(LibraryGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
 }

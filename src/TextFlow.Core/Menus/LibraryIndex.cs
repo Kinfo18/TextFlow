@@ -1,5 +1,6 @@
 using TextFlow.Core.Expansion;
 using TextFlow.Core.Import;
+using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Menus;
 
@@ -36,7 +37,7 @@ public sealed class LibraryIndex
 
     public IReadOnlyList<TriggerDefinition> Triggers { get; }
 
-    public static LibraryIndex Build(ImportedGroup root)
+    public static LibraryIndex Build(LibraryGroup root)
     {
         ArgumentNullException.ThrowIfNull(root);
 
@@ -47,11 +48,12 @@ public sealed class LibraryIndex
 
         foreach (var group in groups)
         {
-            foreach (var snippet in group.Snippets.Where(s => !s.IsInfoOnly))
+            foreach (var snippet in group.Snippets.Where(s => !s.IsInfoOnly && s.Enabled))
             {
-                foreach (var abbreviation in snippet.TypeableAbbreviations.Where(a => a.Length < MaxTriggerLength))
+                var mode = snippet.Mode == SnippetMode.AfterDelimiter ? TriggerMode.AfterDelimiter : TriggerMode.Immediate;
+                foreach (var abbreviation in snippet.TypeableAbbreviations.Where(a => Typeable(a, mode)))
                 {
-                    var candidate = new TriggerDefinition($"{SnippetPrefix}{snippets.Count}", abbreviation, TriggerMode.Immediate, group.IgnoreCase);
+                    var candidate = new TriggerDefinition($"{SnippetPrefix}{snippets.Count}", abbreviation, mode, group.IgnoreCase);
                     if (triggers.Any(t => Collides(t.Trigger, t.IgnoreCase, candidate.Trigger, candidate.IgnoreCase)))
                     {
                         continue;
@@ -66,13 +68,18 @@ public sealed class LibraryIndex
         return new LibraryIndex(menus, snippets, triggers);
     }
 
+    /// <summary>Fits the matcher buffer; an after-delimiter abbreviation cannot itself contain a delimiter ("Foto valida").</summary>
+    private static bool Typeable(string abbreviation, TriggerMode mode) =>
+        abbreviation.Length < MaxTriggerLength
+        && (mode == TriggerMode.Immediate || !abbreviation.Any(TriggerOptions.Default.Delimiters.Contains));
+
     public GroupMenu? FindMenu(string triggerId) => _menus.GetValueOrDefault(triggerId);
 
     public MenuSnippetEntry? FindSnippet(string triggerId) => _snippets.GetValueOrDefault(triggerId);
 
-    private static GroupMenu[] BuildMenus(IEnumerable<ImportedGroup> abbreviated)
+    private static GroupMenu[] BuildMenus(IEnumerable<LibraryGroup> abbreviated)
     {
-        var buckets = new List<List<ImportedGroup>>();
+        var buckets = new List<List<LibraryGroup>>();
         foreach (var group in abbreviated)
         {
             var bucket = buckets.FirstOrDefault(b => Collides(b[0].Abbreviation!, b[0].IgnoreCase, group.Abbreviation!, group.IgnoreCase));
@@ -92,7 +99,7 @@ public sealed class LibraryIndex
     private static bool Collides(string a, bool aIgnoresCase, string b, bool bIgnoresCase) =>
         string.Equals(a, b, aIgnoresCase || bIgnoresCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    private static GroupMenu ToMenu(string id, List<ImportedGroup> groups)
+    private static GroupMenu ToMenu(string id, List<LibraryGroup> groups)
     {
         var first = groups[0];
         var entries = groups.Count == 1
@@ -102,11 +109,11 @@ public sealed class LibraryIndex
         return new GroupMenu(id, first.Abbreviation!, groups.Any(g => g.IgnoreCase), entries);
     }
 
-    private static MenuEntry[] Children(ImportedGroup group) =>
+    private static MenuEntry[] Children(LibraryGroup group) =>
     [
         .. group.Groups.Select(g => new MenuGroupEntry(g.Name, Children(g))),
         .. group.Snippets.Select(s => new MenuSnippetEntry(s.Name, s.Content)),
     ];
 
-    private static IEnumerable<ImportedGroup> Flatten(ImportedGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
+    private static IEnumerable<LibraryGroup> Flatten(LibraryGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);
 }
