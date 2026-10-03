@@ -5,6 +5,21 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="Transparent">
 
+    <Page.Resources>
+        <MenuFlyout x:Key="GroupActions" x:Name="GroupActions">
+            <MenuFlyoutItem x:Name="NewGroupItem" Text="Nuevo subgrupo…" Click="OnNewGroup">
+                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F4;" /></MenuFlyoutItem.Icon>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem x:Name="EditGroupItem" Text="Editar grupo…" Click="OnEditGroup">
+                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70F;" /></MenuFlyoutItem.Icon>
+            </MenuFlyoutItem>
+            <MenuFlyoutSeparator />
+            <MenuFlyoutItem x:Name="DeleteGroupItem" Text="Eliminar grupo…" Click="OnDeleteGroup">
+                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+            </MenuFlyoutItem>
+        </MenuFlyout>
+    </Page.Resources>
+
     <Grid Padding="24,16,24,16" ColumnSpacing="12">
         <Grid.ColumnDefinitions>
             <!-- Proportional so the editor never falls off a narrow window (MainWindow enforces a minimum width). -->
@@ -24,7 +39,7 @@
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
                 <TreeView x:Name="GroupTree" SelectionMode="Single" CanDragItems="True" AllowDrop="True" CanReorderItems="True"
-                          ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" />
+                          ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" ContextRequested="OnTreeContextRequested" />
             </Border>
         </Grid>
 
@@ -43,12 +58,16 @@
                     <TextBlock x:Name="ListTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="ListSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
                 </StackPanel>
-                <Button x:Name="NewSnippetButton" Grid.Column="1" VerticalAlignment="Center" Click="OnNewSnippet" ToolTipService.ToolTip="Nuevo comando en este grupo">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon Glyph="&#xE710;" FontSize="12" />
-                        <TextBlock Text="Nuevo" />
-                    </StackPanel>
-                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button x:Name="NewSnippetButton" Click="OnNewSnippet" ToolTipService.ToolTip="Nuevo comando en este grupo">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE710;" FontSize="12" />
+                            <TextBlock Text="Nuevo" />
+                        </StackPanel>
+                    </Button>
+                    <DropDownButton x:Name="GroupButton" Content="Grupo" Flyout="{StaticResource GroupActions}"
+                                    ToolTipService.ToolTip="Crear, editar o eliminar el grupo elegido" />
+                </StackPanel>
             </Grid>
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">

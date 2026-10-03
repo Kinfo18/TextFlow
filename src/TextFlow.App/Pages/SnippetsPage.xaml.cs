@@ -96,6 +96,10 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
     private void ShowGroup(LibraryGroup group)
     {
+        var isRoot = group.Id == Library.Id;
+        EditGroupItem.IsEnabled = !isRoot;
+        DeleteGroupItem.IsEnabled = !isRoot;
+        GroupButton.IsEnabled = true;
         ListTitle.Text = group.Name;
         var count = group.Snippets.Count == 1 ? "1 comando" : $"{group.Snippets.Count} comandos";
         ListSubtitle.Text = group.Abbreviation is { } abbreviation ? $"{count} · se abre con {abbreviation}" : count;
@@ -114,6 +118,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
             _ => $"{hits.Count} comandos",
         };
         NewSnippetButton.IsEnabled = false; // a new command needs a group: pick one in the tree
+        GroupButton.IsEnabled = false;
         Fill(hits.Select(h => (h.Snippet, h.GroupId, (string?)string.Join(" › ", h.GroupPath))));
     }
 
@@ -462,6 +467,122 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
         var path = Find(Library, groupId, []) ?? [];
         return path.Any() ? string.Join(" › ", path) : Library.Name;
+    }
+
+    private LibraryGroup SelectedGroup =>
+        GroupTree.SelectedNode is { } node && _groups.TryGetValue(node, out var group) ? group : Library;
+
+    /// <summary>Right-click on the tree: select the group under the pointer, then offer its actions.</summary>
+    private void OnTreeContextRequested(UIElement sender, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs args)
+    {
+        var container = args.OriginalSource as DependencyObject;
+        while (container is not null and not TreeViewItem)
+        {
+            container = VisualTreeHelper.GetParent(container);
+        }
+
+        if (container is TreeViewItem item && GroupTree.NodeFromContainer(item) is { } node && _groups.TryGetValue(node, out var group))
+        {
+            GroupTree.SelectedNode = node;
+            _selectedGroupId = group.Id;
+            SearchBox.Text = string.Empty;
+            ShowGroup(group);
+            if (args.TryGetPosition(item, out var point))
+            {
+                GroupActions.ShowAt(item, point);
+            }
+            else
+            {
+                GroupActions.ShowAt(item);
+            }
+
+            args.Handled = true;
+        }
+    }
+
+    /// <remarks>async void: every failure is caught; an escaping exception freezes WinUI.</remarks>
+    private async void OnNewGroup(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var parent = SelectedGroup;
+            if (await GroupDialog.EditAsync(XamlRoot, GroupDraft.New(parent.Id), isNew: true) is { } info
+                && await App.Current.EditLibraryAsync(XamlRoot, service => service.SaveGroupAsync(info, CancellationToken.None)))
+            {
+                _selectedGroupId = info.Id;
+                Refresh();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            GroupFail(ex);
+        }
+    }
+
+    private async void OnEditGroup(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var group = SelectedGroup;
+            if (group.Id == Library.Id || !ParentIds(Library).TryGetValue(group.Id, out var parentId))
+            {
+                return;
+            }
+
+            if (await GroupDialog.EditAsync(XamlRoot, GroupDraft.From(group, parentId), isNew: false) is { } info
+                && await App.Current.EditLibraryAsync(XamlRoot, service => service.SaveGroupAsync(info, CancellationToken.None)))
+            {
+                Refresh();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            GroupFail(ex);
+        }
+    }
+
+    private async void OnDeleteGroup(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var group = SelectedGroup;
+            if (group.Id == Library.Id)
+            {
+                return;
+            }
+
+            var (subgroups, commands) = Count(group);
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Eliminar grupo",
+                Content = $"Se eliminará «{group.Name}» con {subgroups} subgrupos y {commands} comandos. Este borrado no se guarda como copia.",
+                PrimaryButtonText = "Eliminar",
+                CloseButtonText = "Cancelar",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary
+                && await App.Current.EditLibraryAsync(XamlRoot, service => service.DeleteGroupAsync(group.Id, CancellationToken.None)))
+            {
+                _selectedGroupId = ParentIds(Library).GetValueOrDefault(group.Id);
+                _selectedSnippetId = null;
+                SetDirty(false);
+                Refresh();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            GroupFail(ex);
+        }
+    }
+
+    private static (int Subgroups, int Commands) Count(LibraryGroup group) =>
+        group.Groups.Select(Count).Aggregate((group.Groups.Count, group.Snippets.Count), (sum, child) => (sum.Item1 + child.Subgroups, sum.Item2 + child.Commands));
+
+    private void GroupFail(Exception ex)
+    {
+        App.Current.RecordFault(ex);
+        ListSubtitle.Text = $"No se pudo guardar el grupo: {ex.Message}";
     }
 
     /// <summary>
