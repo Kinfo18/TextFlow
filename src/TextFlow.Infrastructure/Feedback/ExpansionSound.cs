@@ -1,3 +1,4 @@
+using TextFlow.Core.Engine;
 using TextFlow.Core.Feedback;
 using Windows.Win32;
 using Windows.Win32.Media.Audio;
@@ -9,7 +10,7 @@ namespace TextFlow.Infrastructure.Feedback;
 /// The WAV buffer is pinned because PlaySound keeps reading it after returning; changing the volume
 /// stops any playing chime before the old buffer is released.
 /// </summary>
-public sealed class ExpansionSound
+public sealed class ExpansionSound : IExpansionFeedback
 {
     private readonly Lock _gate = new();
     private byte[] _chime;

@@ -75,3 +75,26 @@ PeekMessage
 PlaySound
 DwmSetWindowAttribute
 DWM_WINDOW_CORNER_PREFERENCE
+// Tray icon
+RegisterClassEx
+UnregisterClass
+DefWindowProc
+RegisterWindowMessage
+CreatePopupMenu
+AppendMenu
+SetMenuDefaultItem
+TrackPopupMenu
+DestroyMenu
+SetForegroundWindow
+PostMessage
+GetCursorPos
+CreateIconIndirect
+DestroyIcon
+CreateDIBSection
+CreateBitmap
+DeleteObject
+GetSystemMetricsForDpi
+GetDpiForSystem
+WM_LBUTTONUP
+WM_RBUTTONUP
+WM_NULL

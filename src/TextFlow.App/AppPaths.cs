@@ -9,4 +9,6 @@ public sealed record AppPaths(string Root)
     public string Logs => Path.Combine(Root, "logs");
 
     public string Database => Path.Combine(Root, "textflow.db");
+
+    public string Settings => Path.Combine(Root, "settings.json");
 }

@@ -364,12 +364,12 @@ public sealed class ExpansionEngine
     /// <summary>Hides an open menu without inserting; <paramref name="reason"/> null skips the diagnostic.</summary>
     private void CancelMenu(MenuCloseReason? reason)
     {
-        _hook.MenuMode = false;
         if (_open is null)
         {
-            return;
+            return; // leaving MenuMode untouched: turning it off clears the hook's pending trigger ("cp" before "cp1")
         }
 
+        _hook.MenuMode = false;
         _open = null;
         _menu.Cancel();
         if (reason is { } closed)

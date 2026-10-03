@@ -9,7 +9,7 @@ public sealed partial class MainWindow : Window
 {
     private static readonly Dictionary<string, (string Title, string Body)> Sections = new()
     {
-        ["home"] = ("Inicio", "Estado del motor, snippets recientes y accesos rápidos (H1)."),
+        ["home"] = ("Inicio", string.Empty), // filled from the engine state
         ["snippets"] = ("Snippets", "Biblioteca: grupos, abreviaturas e importación de aText (H2–H3)."),
         ["settings"] = ("Configuración", "Sonido y volumen, arranque con Windows, hotkey de pausa, exclusiones (H4)."),
         ["diagnostics"] = ("Diagnóstico", "Métricas técnicas sin contenido: inserciones, destinos rechazados, latencias (H5)."),
@@ -24,6 +24,11 @@ public sealed partial class MainWindow : Window
         Show("home");
     }
 
+    private string _current = "home";
+
+    /// <summary>Re-reads the engine state (pause, library) into the visible section.</summary>
+    public void Refresh() => Show(_current);
+
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is NavigationViewItem { Tag: string tag })
@@ -34,8 +39,34 @@ public sealed partial class MainWindow : Window
 
     private void Show(string tag)
     {
+        _current = tag;
         var (title, body) = Sections[tag];
         SectionTitle.Text = title;
-        SectionBody.Text = body;
+        SectionBody.Text = tag == "home" ? HomeStatus() : body;
+    }
+
+    private static string HomeStatus()
+    {
+        if (App.Current.StartupError is { } startupError)
+        {
+            return $"TextFlow no pudo arrancar y las expansiones están desactivadas.\n\n{startupError}\n\nCierra esta ventana para salir.";
+        }
+
+        if (App.Current.Engine is not { } engine)
+        {
+            return "El motor se está iniciando…";
+        }
+
+        var state = engine.IsPaused
+            ? "Expansiones en pausa. Reanúdalas desde el icono de la bandeja."
+            : "Expansiones activas. Escribe una abreviatura en cualquier aplicación.";
+        var library = engine.Library switch
+        {
+            { Error: { } error } => $"No se pudo cargar la biblioteca: {error}",
+            { Menus: 0, Commands: 0 } => "Sin biblioteca: indica la ruta de tu backup de aText en \"ATextBackupPath\" de settings.json.",
+            var loaded => $"Biblioteca cargada: {loaded.Menus} menús y {loaded.Commands} comandos directos.",
+        };
+
+        return $"{state}\n\n{library}";
     }
 }

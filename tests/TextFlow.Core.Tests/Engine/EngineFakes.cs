@@ -17,7 +17,23 @@ internal sealed class FakeHook : IInputHook
 
     public bool CaptureEnabled { get; set; }
 
-    public bool MenuMode { get; set; }
+    /// <summary>Like KeyboardHook: turning menu mode off clears the matcher, including a pending trigger.</summary>
+    public bool MenuMode
+    {
+        get => _menuMode;
+        set
+        {
+            _menuMode = value;
+            if (!value)
+            {
+                PendingCleared++;
+            }
+        }
+    }
+
+    public int PendingCleared { get; private set; }
+
+    private bool _menuMode;
 
     public List<int> Flushed { get; } = [];
 

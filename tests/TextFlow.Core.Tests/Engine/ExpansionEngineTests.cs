@@ -197,6 +197,18 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PendingMenuTrigger_KeepsTheHookPendingTrigger_SoDigitsCanContinueIt()
+    {
+        await StartAsync();
+        var clearedBefore = _hook.PendingCleared;
+
+        await TypeAsync(new TriggerPending(Match("cp"), 7, FakeResolver.Window));
+
+        Assert.True(_hook.MenuMode);
+        Assert.Equal(clearedBefore, _hook.PendingCleared); // "cp" must stay pending for "cp1"
+    }
+
+    [Fact]
     public async Task LongerTriggerWhileMenuOpen_CancelsMenu_AndExpandsLongerOne()
     {
         await StartAsync();
