@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="TextFlow.App.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <ScrollViewer Padding="36,24,36,24">
+        <StackPanel Spacing="4" MaxWidth="720" HorizontalAlignment="Left">
+            <TextBlock Text="Configuración" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,16" />
+
+            <TextBlock Text="Apariencia" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,4" />
+            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <RadioButtons x:Name="ThemeChoice" Header="Tema" SelectionChanged="OnThemeChanged">
+                    <x:String>Usar el de Windows</x:String>
+                    <x:String>Claro</x:String>
+                    <x:String>Oscuro</x:String>
+                </RadioButtons>
+            </Border>
+
+            <TextBlock Text="Inicio" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
+            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <ToggleSwitch x:Name="StartWithWindowsSwitch" Header="Iniciar TextFlow con Windows (en la bandeja)"
+                              OnContent="Activado" OffContent="Desactivado" Toggled="OnStartWithWindowsToggled" />
+            </Border>
+
+            <TextBlock Text="Sonido, atajo de pausa y exclusiones por aplicación llegan en H4."
+                       Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" Margin="0,16,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

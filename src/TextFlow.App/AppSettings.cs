@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TextFlow.App;
 
@@ -10,13 +11,15 @@ namespace TextFlow.App;
 /// <param name="ChimeVolume">0-1.</param>
 /// <param name="StartWithWindows">Kept in sync with the HKCU Run entry at every start (H1.3).</param>
 /// <param name="PauseHotkey">Global pause/resume shortcut, e.g. "Ctrl+Shift+Alt+P" (H1.4); null or invalid uses the default.</param>
+/// <param name="Theme">Window theme (H3.1).</param>
 public sealed record AppSettings(
     string? ATextBackupPath = null,
     double ChimeVolume = 1.0,
     bool StartWithWindows = true,
-    string? PauseHotkey = null)
+    string? PauseHotkey = null,
+    AppTheme Theme = AppTheme.System)
 {
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 
     /// <summary>Defaults when the file is missing; a corrupt file is reported, not silently replaced.</summary>
     public static AppSettings Load(string path)
@@ -41,4 +44,12 @@ public sealed record AppSettings(
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
     }
+}
+
+/// <summary>Order matches the radio buttons in Configuración.</summary>
+public enum AppTheme
+{
+    System,
+    Light,
+    Dark,
 }

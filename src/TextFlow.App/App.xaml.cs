@@ -59,6 +59,27 @@ public partial class App : Application, IDisposable
 
     internal LibraryHost? Library => _library;
 
+    internal AppTheme Theme => _settings.Theme;
+
+    internal bool StartsWithWindows => _startup?.IsEnabled ?? false;
+
+    /// <summary>Owner window for file pickers and dialogs.</summary>
+    internal nint MainWindowHandle => _window is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_window);
+
+    internal void SetTheme(AppTheme theme)
+    {
+        _settings = _settings with { Theme = theme };
+        SaveSettings();
+        _window?.ApplyTheme(theme);
+    }
+
+    internal void SetStartWithWindows(bool enabled)
+    {
+        _settings = _settings with { StartWithWindows = enabled };
+        SaveSettings();
+        ApplyStartWithWindows(enabled);
+    }
+
     /// <summary>Why startup failed ("Type: message"), shown on the Inicio page; null when it worked.</summary>
     internal string? StartupError { get; private set; }
 
@@ -229,13 +250,7 @@ public partial class App : Application, IDisposable
         }
     }
 
-    private void ToggleStartWithWindows()
-    {
-        _settings = _settings with { StartWithWindows = !_settings.StartWithWindows };
-        SaveSettings();
-
-        ApplyStartWithWindows(_settings.StartWithWindows);
-    }
+    private void ToggleStartWithWindows() => SetStartWithWindows(!_settings.StartWithWindows);
 
     private void OnTrayCommand(TrayCommand command)
     {

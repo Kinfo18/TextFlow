@@ -1,24 +1,27 @@
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.Storage.Pickers;
-using TextFlow.App.Engine;
+using TextFlow.App.Pages;
 using Windows.Graphics;
 
 namespace TextFlow.App;
 
-/// <summary>Main window shell (spec §23): Inicio · Snippets · Configuración · Diagnóstico. Sections fill in during H1–H5.</summary>
+/// <summary>Main window shell (spec §23, H3.1): navigation between Inicio · Snippets · Configuración · Diagnóstico.</summary>
 public sealed partial class MainWindow : Window
 {
-    private static readonly Dictionary<string, (string Title, string Body)> Sections = new()
+    /// <summary>
+    /// Pages are created and shown directly: Frame.Navigate(Type) needs XAML type metadata and crashed (access
+    /// violation in coreclr) for the code-only placeholder pages.
+    /// </summary>
+    private static readonly Dictionary<string, Func<Page>> Pages = new()
     {
-        ["home"] = ("Inicio", string.Empty), // filled from the engine state
-        ["snippets"] = ("Snippets", "Biblioteca: grupos, abreviaturas e importación de aText (H2–H3)."),
-        ["settings"] = ("Configuración", "Sonido y volumen, arranque con Windows, hotkey de pausa, exclusiones (H4)."),
-        ["diagnostics"] = ("Diagnóstico", "Métricas técnicas sin contenido: inserciones, destinos rechazados, latencias (H5)."),
+        ["home"] = () => new HomePage(),
+        ["snippets"] = () => new SnippetsPage(),
+        ["settings"] = () => new SettingsPage(),
+        ["diagnostics"] = () => new DiagnosticsPage(),
     };
 
-    private string _current = "home";
-    private string? _actionError;
+    private string? _current;
 
     public MainWindow()
     {
@@ -26,227 +29,50 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
         AppWindow.Resize(new SizeInt32(1100, 720));
-        Show("home");
+        ApplyTheme(App.Current.Theme);
+        Navigate("home");
     }
 
-    /// <summary>Re-reads the engine state (pause, library) into the visible section.</summary>
-    public void Refresh() => Show(_current);
+    /// <summary>Re-reads the engine state (pause, library) into the visible page.</summary>
+    public void Refresh() => (ContentHost.Content as IRefreshable)?.Refresh();
+
+    /// <summary>Light, dark or follow Windows; the caption buttons follow the content.</summary>
+    public void ApplyTheme(AppTheme theme)
+    {
+        if (Content is FrameworkElement root)
+        {
+            root.RequestedTheme = theme switch
+            {
+                AppTheme.Light => ElementTheme.Light,
+                AppTheme.Dark => ElementTheme.Dark,
+                _ => ElementTheme.Default,
+            };
+        }
+
+        AppWindow.TitleBar.PreferredTheme = theme switch
+        {
+            AppTheme.Light => TitleBarTheme.Light,
+            AppTheme.Dark => TitleBarTheme.Dark,
+            _ => TitleBarTheme.UseDefaultAppMode,
+        };
+    }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is NavigationViewItem { Tag: string tag })
         {
-            Show(tag);
+            Navigate(tag);
         }
     }
 
-    private void Show(string tag)
+    private void Navigate(string tag)
     {
+        if (_current == tag || ContentHost is null)
+        {
+            return; // SelectionChanged also fires while InitializeComponent builds the NavigationView
+        }
+
         _current = tag;
-        var (title, body) = Sections[tag];
-        SectionTitle.Text = title;
-        SectionBody.Text = tag == "home" ? HomeStatus() + (_actionError is { } error ? $"\n\n{error}" : string.Empty) : body;
-        HomeActions.Visibility = tag == "home" && App.Current.Engine is not null ? Visibility.Visible : Visibility.Collapsed;
-        ReloadLibraryButton.IsEnabled = App.Current.Library?.Status.SourcePath is not null;
-    }
-
-    /// <remarks>
-    /// async void: an escaping exception would freeze WinUI (its error reporting deadlocked here), so every failure
-    /// is caught and shown on Inicio. Classic picker + InitializeWithWindow: the WinAppSDK picker failed with
-    /// RPC_E_WRONG_THREAD in this unpackaged app.
-    /// </remarks>
-    private async void OnChooseLibrary(object sender, RoutedEventArgs e)
-    {
-        ChooseLibraryButton.IsEnabled = false;
-        try
-        {
-            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-            picker.FileTypeFilter.Add(".atext");
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
-            {
-                var (import, preview) = await library.PreviewATextAsync(path, CancellationToken.None);
-                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, $"Importar «{Path.GetFileName(path)}»", preview))
-                {
-                    await App.Current.ChooseLibraryAsync(path, import);
-                }
-            }
-
-            _actionError = null;
-        }
-        catch (Exception ex)
-        {
-            _actionError = $"No se pudo elegir el archivo: {ex.Message}";
-            App.Current.RecordFault(ex);
-        }
-        finally
-        {
-            ChooseLibraryButton.IsEnabled = true;
-            Refresh();
-        }
-    }
-
-    /// <remarks>async void: every failure is caught and shown on Inicio (an escaping exception freezes WinUI).</remarks>
-    private async void OnExportLibrary(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var picker = new FileSavePicker
-            {
-                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-                SuggestedFileName = $"TextFlow {DateTime.Now:yyyy-MM-dd}",
-            };
-            picker.FileTypeChoices.Add("Biblioteca de TextFlow", [".json"]);
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            if (await picker.PickSaveFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
-            {
-                await library.ExportAsync(path, CancellationToken.None);
-                _actionError = $"Biblioteca exportada a «{Path.GetFileName(path)}».";
-            }
-        }
-        catch (Exception ex)
-        {
-            _actionError = $"No se pudo exportar: {ex.Message}";
-            App.Current.RecordFault(ex);
-        }
-        finally
-        {
-            Refresh();
-        }
-    }
-
-    private async void OnImportLibraryFile(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-            picker.FileTypeFilter.Add(".json");
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
-            {
-                var (root, preview) = await library.PreviewLibraryFileAsync(path, CancellationToken.None);
-                var following = library.Status.SourcePath is { } source ? Path.GetFileName(source) : null;
-                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, $"Importar «{Path.GetFileName(path)}»", preview, following))
-                {
-                    await App.Current.ImportLibraryFileAsync(root);
-                }
-            }
-
-            _actionError = null;
-        }
-        catch (Exception ex)
-        {
-            _actionError = $"No se pudo importar: {ex.Message}";
-            App.Current.RecordFault(ex);
-        }
-        finally
-        {
-            Refresh();
-        }
-    }
-
-    private async void OnRestoreBackup(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (App.Current.Library is not { } library
-                || await ImportDialog.PickBackupAsync(Content.XamlRoot, library.ListBackups()) is not { } backup)
-            {
-                return;
-            }
-
-            var (root, preview) = await library.PreviewBackupAsync(backup, CancellationToken.None);
-            var following = library.Status.SourcePath is { } source ? Path.GetFileName(source) : null;
-            var title = $"Restaurar la copia del {backup.CreatedAt.ToString("d 'de' MMMM, HH:mm", System.Globalization.CultureInfo.CurrentCulture)}";
-            if (await ImportDialog.ConfirmAsync(Content.XamlRoot, title, preview, following))
-            {
-                await App.Current.ImportLibraryFileAsync(root);
-                _actionError = "Copia restaurada. La biblioteca anterior quedó guardada como otra copia.";
-            }
-        }
-        catch (Exception ex)
-        {
-            _actionError = $"No se pudo restaurar: {ex.Message}";
-            App.Current.RecordFault(ex);
-        }
-        finally
-        {
-            Refresh();
-        }
-    }
-
-    private async void OnReloadLibrary(object sender, RoutedEventArgs e)
-    {
-        if (App.Current.Library is not { } library)
-        {
-            return;
-        }
-
-        ReloadLibraryButton.IsEnabled = false;
-        try
-        {
-            await library.ReimportAsync(CancellationToken.None);
-            _actionError = null;
-        }
-        catch (Exception ex)
-        {
-            _actionError = $"No se pudo recargar: {ex.Message}";
-            App.Current.RecordFault(ex);
-        }
-        finally
-        {
-            Refresh();
-        }
-    }
-
-    private static string HomeStatus()
-    {
-        if (App.Current.StartupError is { } startupError)
-        {
-            return $"TextFlow no pudo arrancar y las expansiones están desactivadas.\n\n{startupError}\n\nCierra esta ventana para salir.";
-        }
-
-        if (App.Current.Engine is not { } engine)
-        {
-            return "El motor se está iniciando…";
-        }
-
-        var state = engine.IsPaused
-            ? "Expansiones en pausa. Reanúdalas desde el icono de la bandeja."
-            : "Expansiones activas. Escribe una abreviatura en cualquier aplicación.";
-        var shortcut = App.Current.PauseHotkey switch
-        {
-            { Registered: true } hotkey => $"Atajo para pausar/reanudar: {hotkey.Gesture}.",
-            { } hotkey => $"El atajo {hotkey.Gesture} lo usa otra aplicación; pausa desde la bandeja.",
-            null => string.Empty,
-        };
-
-        var hook = engine.HookReinstalls > 0
-            ? $"Windows retiró el hook de teclado y TextFlow lo reinstaló {engine.HookReinstalls} {(engine.HookReinstalls == 1 ? "vez" : "veces")}."
-            : string.Empty;
-
-        return string.Join("\n\n", new[] { state, shortcut, LibraryText(App.Current.Library?.Status), hook }.Where(s => s.Length > 0));
-    }
-
-    private static string LibraryText(LibraryStatus? library)
-    {
-        if (library?.Summary is not { } summary || (summary.Menus == 0 && summary.Commands == 0))
-        {
-            return library?.Error is { } failed
-                ? $"No se pudo importar la biblioteca: {failed}"
-                : "Biblioteca vacía: importa tu backup de aText (.atext) para empezar a expandir.";
-        }
-
-        var text = $"Biblioteca de TextFlow: {summary.Menus} menús y {summary.Commands} comandos "
-            + $"({summary.DirectTriggers} abreviaturas se expanden al escribirlas)."
-            + (summary.Issues > 0 ? $" {summary.Issues} avisos en la última importación." : string.Empty);
-        if (library.SourcePath is { } source)
-        {
-            text += $"\nSe importa de «{Path.GetFileName(source)}» y se actualiza sola cuando ese archivo cambia.";
-        }
-
-        return library.Error is { } error
-            ? $"{text}\n\nLa última importación falló ({error}); se mantiene la biblioteca anterior."
-            : text;
+        ContentHost.Content = Pages[tag]();
     }
 }
