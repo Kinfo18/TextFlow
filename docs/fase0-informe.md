@@ -24,7 +24,7 @@
 
 | # | Riesgo | Nivel | Qué sabemos | Mitigación prevista |
 |---|---|---|---|---|
-| R1 | **Popup no activable en WinUI 3.** El prototipo usa WinForms; no está probado que una ventana WinUI 3 pueda mostrarse sin activarse | **Alto** | Una ventana WinUI 3 es un HWND normal, así que `WS_EX_NOACTIVATE` vía interop *debería* funcionar | Mini-spike al inicio de V0.1 (H0). Fallback: mantener el popup en Win32/WinForms con estilo Fluent dibujado |
+| R1 ✅ | **Popup no activable en WinUI 3.** Resuelto el 2026-10-02 por H0.1 / ADR-0008. El prototipo usa WinForms; no está probado que una ventana WinUI 3 pueda mostrarse sin activarse | **Alto** | Una ventana WinUI 3 es un HWND normal, así que `WS_EX_NOACTIVATE` vía interop *debería* funcionar | Mini-spike al inicio de V0.1 (H0). Fallback: mantener el popup en Win32/WinForms con estilo Fluent dibujado |
 | R2 | **Disparos accidentales.** 293 comandos sin distinguir mayúsculas, algunos frases comunes ("no ingresa", "lleva solo") | Alto | Mismo comportamiento que aText; el usuario lo acepta | Métrica *Trigger False Positive* en diagnóstico, interruptor por snippet/grupo, pausa global por hotkey |
 | R3 | **Windows retira el hook** si el callback supera `LowLevelHooksTimeout` | Alto | Callback máx. medido ≈1 ms; no ha ocurrido | Watchdog que detecta "input sin callbacks" y reinstala (pendiente técnico 2) |
 | R4 | **Campos de contraseña dentro de la misma ventana** (navegador): la política solo se reevalúa al cambiar de ventana | Alto | `EVENT_OBJECT_FOCUS` no está implementado | Reevaluar la política en cada cambio de foco (pendiente técnico 1) |
