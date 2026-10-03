@@ -11,13 +11,16 @@ public sealed record LibrarySummary(int Menus, int Commands, int DirectTriggers,
     public static LibrarySummary Of(ATextImport import, LibraryIndex index)
     {
         ArgumentNullException.ThrowIfNull(import);
+        return Of(import.Root, index, import.Issues.Count);
+    }
+
+    /// <param name="issues">Warnings of the import that produced this library (0 when edited in TextFlow).</param>
+    public static LibrarySummary Of(LibraryGroup root, LibraryIndex index, int issues)
+    {
+        ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(index);
 
-        return new LibrarySummary(
-            index.Menus.Count,
-            CountSnippets(import.Root),
-            index.Triggers.Count - index.Menus.Count,
-            import.Issues.Count);
+        return new LibrarySummary(index.Menus.Count, CountSnippets(root), index.Triggers.Count - index.Menus.Count, issues);
     }
 
     private static int CountSnippets(LibraryGroup group) => group.Snippets.Count + group.Groups.Sum(CountSnippets);

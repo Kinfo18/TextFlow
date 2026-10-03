@@ -32,7 +32,7 @@ public sealed class HookWatchdogTests : IDisposable
     [Fact]
     public async Task InputTheHookNeverSaw_ReinstallsIt_AndReportsTheCount()
     {
-        var reported = new List<int>();
+        var reported = new List<HookReinstall>();
         _watchdog.Reinstalled += reported.Add;
         _hook.LastCallbackTick = 10_000;
         _lastSystemInput = 15_000; // Windows removed the hook: typing goes on without callbacks
@@ -40,7 +40,7 @@ public sealed class HookWatchdogTests : IDisposable
         await _watchdog.CheckAsync();
 
         Assert.Equal(1, _hook.Reinstalls);
-        Assert.Equal([1], reported);
+        Assert.Equal([new HookReinstall(1, 5_000)], reported);
     }
 
     [Fact]

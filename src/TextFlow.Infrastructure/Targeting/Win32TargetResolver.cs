@@ -167,7 +167,7 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         return new MonitorInfo((nint)monitor.Value, device, dpiX, dpiY, bounds);
     }
 
-    private static string GetProcessName(uint processId)
+    internal static string GetProcessName(uint processId)
     {
         using var process = OpenForQuery(processId);
         if (process.IsInvalid)

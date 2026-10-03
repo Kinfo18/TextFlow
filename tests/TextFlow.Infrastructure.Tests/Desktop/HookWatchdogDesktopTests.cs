@@ -21,7 +21,7 @@ public sealed partial class HookWatchdogDesktopTests
         using var hook = new KeyboardHook(new TriggerMatcher([], TriggerOptions.Default));
         using var watchdog = new HookWatchdog(hook, InputProbe.LastInputTick, () => false, TimeProvider.System, HookWatchdogOptions.Default);
         var reinstalls = 0;
-        watchdog.Reinstalled += count => reinstalls = count;
+        watchdog.Reinstalled += info => reinstalls = info.TimesThisSession;
 
         await hook.SimulateSilentRemovalAsync();
         await Task.Delay(1_500);
@@ -43,7 +43,7 @@ public sealed partial class HookWatchdogDesktopTests
         using var hook = new KeyboardHook(new TriggerMatcher([], TriggerOptions.Default));
         using var watchdog = new HookWatchdog(hook, InputProbe.LastInputTick, () => false, TimeProvider.System, HookWatchdogOptions.Default);
         var reinstalls = 0;
-        watchdog.Reinstalled += count => reinstalls = count;
+        watchdog.Reinstalled += info => reinstalls = info.TimesThisSession;
 
         await Task.Delay(1_500);
         await NudgeMouseAsync();

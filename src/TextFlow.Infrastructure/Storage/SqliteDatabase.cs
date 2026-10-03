@@ -57,6 +57,25 @@ public sealed class SqliteDatabase
         }
     }
 
+    /// <summary>
+    /// Consistent snapshot of the whole database into a new file (VACUUM INTO), safe while other connections read.
+    /// Taken before every import so a bad import can be undone.
+    /// </summary>
+    public async Task BackupAsync(string destinationPath, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        if (Path.GetDirectoryName(Path.GetFullPath(destinationPath)) is { } directory)
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await using var connection = await OpenAsync(ct).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "VACUUM INTO $path;";
+        command.Parameters.AddWithValue("$path", destinationPath);
+        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task<int> GetSchemaVersionAsync(CancellationToken ct)
     {
         await using var connection = await OpenAsync(ct).ConfigureAwait(false);

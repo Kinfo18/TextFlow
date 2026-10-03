@@ -47,7 +47,7 @@ public sealed partial class MainWindow : Window
         SectionTitle.Text = title;
         SectionBody.Text = tag == "home" ? HomeStatus() + (_actionError is { } error ? $"\n\n{error}" : string.Empty) : body;
         HomeActions.Visibility = tag == "home" && App.Current.Engine is not null ? Visibility.Visible : Visibility.Collapsed;
-        ReloadLibraryButton.IsEnabled = App.Current.Engine?.Library.Path is not null;
+        ReloadLibraryButton.IsEnabled = App.Current.Library?.Status.SourcePath is not null;
     }
 
     /// <remarks>
@@ -84,7 +84,7 @@ public sealed partial class MainWindow : Window
 
     private async void OnReloadLibrary(object sender, RoutedEventArgs e)
     {
-        if (App.Current.Engine is not { } engine)
+        if (App.Current.Library is not { } library)
         {
             return;
         }
@@ -92,7 +92,7 @@ public sealed partial class MainWindow : Window
         ReloadLibraryButton.IsEnabled = false;
         try
         {
-            await engine.ReloadAsync();
+            await library.ReimportAsync(CancellationToken.None);
             _actionError = null;
         }
         catch (Exception ex)
@@ -132,30 +132,28 @@ public sealed partial class MainWindow : Window
             ? $"Windows retiró el hook de teclado y TextFlow lo reinstaló {engine.HookReinstalls} {(engine.HookReinstalls == 1 ? "vez" : "veces")}."
             : string.Empty;
 
-        return string.Join("\n\n", new[] { state, shortcut, LibraryText(engine.Library), hook }.Where(s => s.Length > 0));
+        return string.Join("\n\n", new[] { state, shortcut, LibraryText(App.Current.Library?.Status), hook }.Where(s => s.Length > 0));
     }
 
-    private static string LibraryText(LibraryStatus library)
+    private static string LibraryText(LibraryStatus? library)
     {
-        if (library.Path is null)
+        if (library?.Summary is not { } summary || (summary.Menus == 0 && summary.Commands == 0))
         {
-            return "Sin biblioteca: elige tu backup de aText (.atext) para empezar a expandir.";
+            return library?.Error is { } failed
+                ? $"No se pudo importar la biblioteca: {failed}"
+                : "Biblioteca vacía: importa tu backup de aText (.atext) para empezar a expandir.";
         }
 
-        var file = Path.GetFileName(library.Path);
-        var loaded = library.Summary is { } summary
-            ? $"Biblioteca «{file}»: {summary.Menus} menús y {summary.Commands} comandos "
-              + $"({summary.DirectTriggers} abreviaturas se expanden al escribirlas)."
-              + (summary.Issues > 0 ? $" {summary.Issues} avisos de importación." : string.Empty)
-              + " Se recarga sola si el archivo cambia."
-            : null;
-
-        return (library.Error, loaded) switch
+        var text = $"Biblioteca de TextFlow: {summary.Menus} menús y {summary.Commands} comandos "
+            + $"({summary.DirectTriggers} abreviaturas se expanden al escribirlas)."
+            + (summary.Issues > 0 ? $" {summary.Issues} avisos en la última importación." : string.Empty);
+        if (library.SourcePath is { } source)
         {
-            (null, { } text) => text,
-            ({ } error, { } text) => $"{text}\n\nLa última recarga falló ({error}); se mantiene la biblioteca anterior.",
-            ({ } error, null) => $"No se pudo cargar «{file}»: {error}",
-            (null, null) => $"Cargando «{file}»…",
-        };
+            text += $"\nSe importa de «{Path.GetFileName(source)}» y se actualiza sola cuando ese archivo cambia.";
+        }
+
+        return library.Error is { } error
+            ? $"{text}\n\nLa última importación falló ({error}); se mantiene la biblioteca anterior."
+            : text;
     }
 }

@@ -233,6 +233,29 @@ public sealed class SqliteStorageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Backup_WritesAConsistentCopy_ThatOpensWithTheSameLibrary()
+    {
+        await Library().ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+        var copy = Path.Combine(Path.GetTempPath(), $"textflow-tests-{Guid.NewGuid():N}.db");
+        try
+        {
+            await _db.BackupAsync(copy, CancellationToken.None);
+
+            var restored = new SqliteDatabase(copy);
+            await restored.InitializeAsync(CancellationToken.None);
+            AssertSameTree(SampleLibrary(), await new SqliteLibraryRepository(restored, TimeProvider.System).LoadAsync(CancellationToken.None));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (var file in new[] { copy, copy + "-wal", copy + "-shm" })
+            {
+                File.Delete(file);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ExclusionRules_CanBeSavedUpdatedAndDeleted()
     {
         var rules = new SqliteExclusionRuleRepository(_db);

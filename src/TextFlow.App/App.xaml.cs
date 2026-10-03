@@ -22,6 +22,7 @@ public partial class App : Application, IDisposable
     private readonly IHost _host;
     private DispatcherQueue? _ui;
     private EngineHost? _engine;
+    private LibraryHost? _library;
     private TrayIcon? _tray;
     private SingleInstance? _instance;
     private AppSettings _settings = new();
@@ -55,6 +56,8 @@ public partial class App : Application, IDisposable
     public IServiceProvider Services => _host.Services;
 
     internal EngineHost? Engine => _engine;
+
+    internal LibraryHost? Library => _library;
 
     /// <summary>Why startup failed ("Type: message"), shown on the Inicio page; null when it worked.</summary>
     internal string? StartupError { get; private set; }
@@ -112,9 +115,17 @@ public partial class App : Application, IDisposable
 
         var paths = Services.GetRequiredService<AppPaths>();
         _settings = AppSettings.Load(paths.Settings);
-        _engine = new EngineHost(_settings.ChimeVolume, new WinUiMenuPresenter(ui, popup), Services.GetRequiredService<IDiagnosticSink>());
-        _engine.LibraryChanged += () => ui.TryEnqueue(() => _window?.Refresh());
-        await _engine.StartAsync(_settings.ATextBackupPath);
+        var sink = Services.GetRequiredService<IDiagnosticSink>();
+        _library = new LibraryHost(paths, sink);
+        var library = await _library.InitializeAsync(_settings.ATextBackupPath, CancellationToken.None);
+
+        _engine = new EngineHost(_settings.ChimeVolume, new WinUiMenuPresenter(ui, popup), sink);
+        await _engine.StartAsync(library);
+
+        // Every import or edit re-indexes the engine at once (H2.2), and the window shows the new counts.
+        var engine = _engine;
+        _library.Service.Changed += root => _ = ApplyLibraryAsync(engine, root);
+        _library.StatusChanged += () => ui.TryEnqueue(() => _window?.Refresh());
 
         var tray = new TrayIcon();
         tray.CommandInvoked += command => ui.TryEnqueue(() => OnTrayCommand(command));
@@ -172,14 +183,26 @@ public partial class App : Application, IDisposable
         _tray?.SetStartWithWindows(_startup?.IsEnabled ?? false);
     }
 
-    /// <summary>Uses another aText backup from now on (Inicio → "Elegir backup de aText…").</summary>
+    private async Task ApplyLibraryAsync(EngineHost engine, Core.Library.LibraryGroup root)
+    {
+        try
+        {
+            await engine.UseLibraryAsync(root);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or ObjectDisposedException)
+        {
+            RecordFault(ex); // the previous triggers stay active
+        }
+    }
+
+    /// <summary>Imports another aText backup and follows it from now on (Inicio → "Importar desde aText…").</summary>
     internal async Task ChooseLibraryAsync(string path)
     {
         _settings = _settings with { ATextBackupPath = path };
         SaveSettings();
-        if (_engine is not null)
+        if (_library is not null)
         {
-            await _engine.UseLibraryAsync(path);
+            await _library.UseATextSourceAsync(path, CancellationToken.None);
         }
     }
 
@@ -268,6 +291,11 @@ public partial class App : Application, IDisposable
                 await _engine.DisposeAsync();
             }
 
+            if (_library is not null)
+            {
+                await _library.DisposeAsync();
+            }
+
             _window?.Close();
             await _host.StopAsync();
         }
@@ -301,6 +329,7 @@ public partial class App : Application, IDisposable
         _pauseHotkey?.Dispose();
         _tray?.Dispose();
         _engine?.DisposeAsync().AsTask().GetAwaiter().GetResult(); // no-op after ExitAsync
+        _library?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _host.Dispose();
         _instance?.Dispose();
         GC.SuppressFinalize(this);

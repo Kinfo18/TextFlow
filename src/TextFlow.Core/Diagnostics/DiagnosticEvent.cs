@@ -30,7 +30,15 @@ public sealed record MenuClosed(DateTimeOffset At, MenuCloseReason Reason) : Dia
 
 public sealed record TargetRejected(DateTimeOffset At, [property: SafeToLog] string TargetProcess, RejectionReason Reason) : DiagnosticEvent(At);
 
-public sealed record HookReinstalled(DateTimeOffset At, int TimesThisSession) : DiagnosticEvent(At);
+/// <param name="MissedInputMs">Input the hook never saw, in ms: large values mean a real removal.</param>
+/// <param name="MaxCallbackMs">Slowest hook callback so far: near LowLevelHooksTimeout explains why Windows removed it.</param>
+/// <param name="TargetProcess">Foreground app at the time (process name only).</param>
+public sealed record HookReinstalled(
+    DateTimeOffset At,
+    int TimesThisSession,
+    int MissedInputMs = 0,
+    double MaxCallbackMs = 0,
+    [property: SafeToLog] string TargetProcess = "") : DiagnosticEvent(At);
 
 public sealed record EngineStateChanged(DateTimeOffset At, EngineState State) : DiagnosticEvent(At);
 

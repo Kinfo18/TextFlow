@@ -16,6 +16,16 @@ public static class InputProbe
         return PInvoke.GetLastInputInfo(&info) ? info.dwTime : unchecked((uint)Environment.TickCount);
     }
 
+    /// <summary>Process name of the foreground window (diagnostics), empty when there is none.</summary>
+    public static unsafe string ForegroundProcessName()
+    {
+        var foreground = PInvoke.GetForegroundWindow();
+        uint processId;
+        return !foreground.IsNull && PInvoke.GetWindowThreadProcessId(foreground, &processId) != 0
+            ? Win32TargetResolver.GetProcessName(processId)
+            : string.Empty;
+    }
+
     /// <summary>
     /// True when low-level hooks cannot see the input at all: the secure desktop (UAC, lock screen: no foreground
     /// window) or an elevated foreground window while TextFlow is not elevated (UIPI).

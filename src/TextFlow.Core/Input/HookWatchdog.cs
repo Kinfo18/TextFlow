@@ -10,6 +10,10 @@ public interface IReinstallableHook
     Task ReinstallAsync();
 }
 
+/// <param name="TimesThisSession">Reinstalls so far, this one included.</param>
+/// <param name="MissedInputMs">How much newer the system's last input was than the hook's last callback.</param>
+public sealed record HookReinstall(int TimesThisSession, int MissedInputMs);
+
 /// <param name="Interval">How often to compare the hook against Windows' last input.</param>
 /// <param name="MissedInputGrace">Input this much newer than the last callback means the hook missed it.</param>
 /// <param name="MinReinstallGap">Never reinstall more often than this (a hook that keeps dying must not spin).</param>
@@ -56,7 +60,7 @@ public sealed class HookWatchdog : IDisposable
     }
 
     /// <summary>Raised after each reinstall with how many happened this session.</summary>
-    public event Action<int>? Reinstalled;
+    public event Action<HookReinstall>? Reinstalled;
 
     /// <summary>Raised when installing the hook again failed; the next attempt waits for <see cref="HookWatchdogOptions.MinReinstallGap"/>.</summary>
     public event Action<Exception>? ReinstallFailed;
@@ -73,7 +77,8 @@ public sealed class HookWatchdog : IDisposable
 
         try
         {
-            if (!MissedInput() || _foregroundBlocksHook() || Throttled())
+            var missedMs = MissedInputMs();
+            if (missedMs <= _options.MissedInputGrace.TotalMilliseconds || _foregroundBlocksHook() || Throttled())
             {
                 return;
             }
@@ -89,7 +94,7 @@ public sealed class HookWatchdog : IDisposable
                 return;
             }
 
-            Reinstalled?.Invoke(++_reinstalls);
+            Reinstalled?.Invoke(new HookReinstall(++_reinstalls, missedMs));
         }
         finally
         {
@@ -98,8 +103,7 @@ public sealed class HookWatchdog : IDisposable
     }
 
     /// <summary>Unsigned difference, so the 49.7-day GetTickCount wrap does not look like a huge gap.</summary>
-    private bool MissedInput() =>
-        unchecked((int)(_lastSystemInputTick() - _hook.LastCallbackTick)) > _options.MissedInputGrace.TotalMilliseconds;
+    private int MissedInputMs() => unchecked((int)(_lastSystemInputTick() - _hook.LastCallbackTick));
 
     private bool Throttled() => _lastReinstall is { } last && _time.GetUtcNow() - last < _options.MinReinstallGap;
 
