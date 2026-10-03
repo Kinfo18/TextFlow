@@ -186,7 +186,7 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
     }
 
     /// <summary>Fails closed: if the token cannot be read, the target is treated as elevated.</summary>
-    private static bool IsProcessElevated(uint processId)
+    internal static bool IsProcessElevated(uint processId)
     {
         using var process = OpenForQuery(processId);
         if (process.IsInvalid)

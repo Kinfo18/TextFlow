@@ -21,7 +21,7 @@ namespace TextFlow.Infrastructure.Hooks;
 /// so it only translates keys and feeds the <see cref="TriggerMatcher"/>; all real work is
 /// consumed asynchronously from <see cref="Events"/>.
 /// </summary>
-public sealed unsafe class KeyboardHook : IInputHook, IDisposable
+public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDisposable
 {
     private const uint DontChangeKeyboardState = 0x4; // ToUnicodeEx flag, Windows 10 1607+
     private const int TranslateBufferLength = 8;
@@ -43,6 +43,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
     private static readonly long ActivityInterval = Stopwatch.Frequency * 4;
 
     private long _keyEvents;
+    private int _lastCallbackTick;
     private long _lastActivityAt;
     private long _maxCallbackTicks;
 
@@ -111,17 +112,46 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
     public Task ReplaceTriggersAsync(IEnumerable<TriggerDefinition> triggers) =>
         _thread.InvokeAsync(() => _matcher.ReplaceTriggers(triggers));
 
-    private void Install()
+    /// <summary>Environment.TickCount (same clock as GetLastInputInfo) of the last keyboard or mouse callback.</summary>
+    public uint LastCallbackTick => unchecked((uint)Volatile.Read(ref _lastCallbackTick));
+
+    /// <summary>Hooks the low-level keyboard and mouse again (the WinEvent hook is never removed by Windows).</summary>
+    public Task ReinstallAsync() => _thread.InvokeAsync(() =>
+    {
+        PInvoke.UnhookWindowsHookEx(_keyboardHook); // fails harmlessly if Windows already removed it
+        PInvoke.UnhookWindowsHookEx(_mouseHook);
+        InstallLowLevel();
+        ResetState();
+    });
+
+    /// <summary>Tests only: unhooks without telling anyone, exactly what Windows does after a callback timeout.</summary>
+    internal Task SimulateSilentRemovalAsync() => _thread.InvokeAsync(() =>
+    {
+        PInvoke.UnhookWindowsHookEx(_keyboardHook);
+        PInvoke.UnhookWindowsHookEx(_mouseHook);
+    });
+
+    private void InstallLowLevel()
     {
         var module = PInvoke.GetModuleHandle((PCWSTR)null);
         _keyboardHook = PInvoke.SetWindowsHookEx(WINDOWS_HOOK_ID.WH_KEYBOARD_LL, &KeyboardProc, (HINSTANCE)module.Value, 0);
         _mouseHook = PInvoke.SetWindowsHookEx(WINDOWS_HOOK_ID.WH_MOUSE_LL, &MouseProc, (HINSTANCE)module.Value, 0);
+        Volatile.Write(ref _lastCallbackTick, Environment.TickCount); // a fresh hook has not missed anything yet
+        if (_keyboardHook.IsNull || _mouseHook.IsNull)
+        {
+            throw new InvalidOperationException($"SetWindowsHookEx failed: {Marshal.GetLastPInvokeError()}");
+        }
+    }
+
+    private void Install()
+    {
+        InstallLowLevel();
         _foregroundHook = PInvoke.SetWinEventHook(
             PInvoke.EVENT_SYSTEM_FOREGROUND, PInvoke.EVENT_SYSTEM_FOREGROUND, default, &ForegroundProc, 0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
 
-        if (_keyboardHook.IsNull || _mouseHook.IsNull || _foregroundHook is null || _foregroundHook.IsInvalid)
+        if (_foregroundHook is null || _foregroundHook.IsInvalid)
         {
-            throw new InvalidOperationException($"SetWindowsHookEx failed: {Marshal.GetLastPInvokeError()}");
+            throw new InvalidOperationException($"SetWinEventHook failed: {Marshal.GetLastPInvokeError()}");
         }
     }
 
@@ -135,6 +165,11 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
     private static LRESULT KeyboardProc(int code, WPARAM wParam, LPARAM lParam)
     {
         var self = s_instance;
+        if (self is not null)
+        {
+            Volatile.Write(ref self._lastCallbackTick, Environment.TickCount); // watchdog: the hook is alive
+        }
+
         if (code >= 0 && self is not null && self.HandleKey((uint)wParam.Value, (KBDLLHOOKSTRUCT*)lParam.Value))
         {
             return new LRESULT(1); // swallow the delimiter of an AfterDelimiter trigger
@@ -147,6 +182,11 @@ public sealed unsafe class KeyboardHook : IInputHook, IDisposable
     private static LRESULT MouseProc(int code, WPARAM wParam, LPARAM lParam)
     {
         var message = (uint)wParam.Value;
+        if (s_instance is { } alive)
+        {
+            Volatile.Write(ref alive._lastCallbackTick, Environment.TickCount);
+        }
+
         if (code >= 0 && message is PInvoke.WM_LBUTTONDOWN or PInvoke.WM_RBUTTONDOWN or PInvoke.WM_MBUTTONDOWN && s_instance is { } self)
         {
             self.ResetState(); // a click may move the caret: the buffer no longer reflects text before it

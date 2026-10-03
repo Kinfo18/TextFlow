@@ -128,7 +128,11 @@ public sealed partial class MainWindow : Window
             null => string.Empty,
         };
 
-        return string.Join("\n\n", new[] { state, shortcut, LibraryText(engine.Library) }.Where(s => s.Length > 0));
+        var hook = engine.HookReinstalls > 0
+            ? $"Windows retiró el hook de teclado y TextFlow lo reinstaló {engine.HookReinstalls} {(engine.HookReinstalls == 1 ? "vez" : "veces")}."
+            : string.Empty;
+
+        return string.Join("\n\n", new[] { state, shortcut, LibraryText(engine.Library), hook }.Where(s => s.Length > 0));
     }
 
     private static string LibraryText(LibraryStatus library)

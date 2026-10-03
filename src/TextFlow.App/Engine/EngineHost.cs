@@ -2,6 +2,7 @@ using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Engine;
 using TextFlow.Core.Expansion;
 using TextFlow.Core.Import;
+using TextFlow.Core.Input;
 using TextFlow.Core.Menus;
 using TextFlow.Core.Operations;
 using TextFlow.Core.Security;
@@ -38,6 +39,7 @@ public sealed class EngineHost : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly Timer _reloadTimer;
+    private readonly HookWatchdog _watchdog;
     private FileSystemWatcher? _watcher;
     private Task? _run;
     private bool _disposed;
@@ -59,6 +61,13 @@ public sealed class EngineHost : IAsyncDisposable
             sink,
             TimeProvider.System,
             ExpansionEngineOptions.Default);
+        _watchdog = new HookWatchdog(_hook, InputProbe.LastInputTick, InputProbe.ForegroundBlocksHooks, TimeProvider.System, HookWatchdogOptions.Default);
+        _watchdog.Reinstalled += count =>
+        {
+            HookReinstalls = count;
+            _sink.Record(new HookReinstalled(DateTimeOffset.UtcNow, count));
+        };
+        _watchdog.ReinstallFailed += ex => _sink.Record(new EngineFault(DateTimeOffset.UtcNow, ex.GetType().Name));
         _reloadTimer = new Timer(_ => _ = ReloadFromWatcherAsync(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -71,6 +80,9 @@ public sealed class EngineHost : IAsyncDisposable
     public LibraryStatus Library { get; private set; } = LibraryStatus.NotConfigured;
 
     public bool IsPaused => _engine.IsPaused;
+
+    /// <summary>Times the watchdog had to install the hook again this session (R3).</summary>
+    public int HookReinstalls { get; private set; }
 
     public async Task StartAsync(string? libraryPath)
     {
@@ -186,6 +198,7 @@ public sealed class EngineHost : IAsyncDisposable
         }
 
         _disposed = true;
+        _watchdog.Dispose();
         _watcher?.Dispose();
         await _reloadTimer.DisposeAsync().ConfigureAwait(false);
         await _stop.CancelAsync().ConfigureAwait(false);
