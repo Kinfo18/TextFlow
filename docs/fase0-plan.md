@@ -70,5 +70,5 @@ Ejecutar `spikes` desde una terminal: la terminal está excluida por política, 
    - teclado: flechas, Enter, Esc cierra; números para elegir rápido (mejora sobre aText).
 6. Volcados WER sin heap (ADR-0006).
 
-## Siguiente orden recomendado
-Resto de matriz S3 → S7 menú de grupo → importador completo S6 → S5 benchmark → cerrar Fase 0 con informe de riesgos → V0.1.
+## Cierre
+Fase 0 cerrada el 2026-10-02: ver [`fase0-informe.md`](fase0-informe.md). Siguiente: [`v0.1-plan.md`](v0.1-plan.md), empezando por H0.1 (popup WinUI 3 no activable).
