@@ -29,18 +29,62 @@ public sealed class HookWatchdogTests : IDisposable
         Assert.Equal(0, _hook.Reinstalls);
     }
 
+    /// <summary>A dead hook: the system keeps seeing input over two checks, the hook sees none.</summary>
+    private async Task DeadHookOverTwoChecksAsync()
+    {
+        _hook.LastCallbackTick = 10_000;
+        _lastSystemInput = 15_000;
+        await _watchdog.CheckAsync();
+        _lastSystemInput = 17_000;
+        await _watchdog.CheckAsync();
+    }
+
     [Fact]
-    public async Task InputTheHookNeverSaw_ReinstallsIt_AndReportsTheCount()
+    public async Task InputTheHookNeverSaw_OnTwoChecks_ReinstallsIt_AndReportsTheCount()
     {
         var reported = new List<HookReinstall>();
         _watchdog.Reinstalled += reported.Add;
+
+        await DeadHookOverTwoChecksAsync(); // Windows removed the hook: typing goes on without callbacks
+
+        Assert.Equal(1, _hook.Reinstalls);
+        Assert.Equal([new HookReinstall(1, 7_000)], reported);
+    }
+
+    [Fact]
+    public async Task ASingleGap_IsNotEnough_TouchpadContactUpdatesTheSystemInputWithoutEvents()
+    {
         _hook.LastCallbackTick = 10_000;
-        _lastSystemInput = 15_000; // Windows removed the hook: typing goes on without callbacks
+        _lastSystemInput = 11_800;
 
         await _watchdog.CheckAsync();
 
-        Assert.Equal(1, _hook.Reinstalls);
-        Assert.Equal([new HookReinstall(1, 5_000)], reported);
+        Assert.Equal(0, _hook.Reinstalls);
+    }
+
+    [Fact]
+    public async Task GapThatHealsBeforeTheSecondCheck_IsNotAFailure()
+    {
+        _hook.LastCallbackTick = 10_000;
+        _lastSystemInput = 11_800;
+        await _watchdog.CheckAsync();
+
+        _hook.LastCallbackTick = 12_500; // the user typed: the hook is alive
+        _lastSystemInput = 14_000;
+        await _watchdog.CheckAsync();
+
+        Assert.Equal(0, _hook.Reinstalls);
+    }
+
+    [Fact]
+    public async Task NoNewSystemInput_IsNotConfirmation()
+    {
+        _hook.LastCallbackTick = 10_000;
+        _lastSystemInput = 11_800;
+        await _watchdog.CheckAsync();
+        await _watchdog.CheckAsync(); // same stale gap, nothing new happened
+
+        Assert.Equal(0, _hook.Reinstalls);
     }
 
     [Fact]
@@ -57,11 +101,9 @@ public sealed class HookWatchdogTests : IDisposable
     [Fact]
     public async Task ElevatedOrSecureForeground_IsSkipped_BecauseHooksCannotSeeItsInput()
     {
-        _hook.LastCallbackTick = 10_000;
-        _lastSystemInput = 15_000;
         _foregroundBlocksHook = true;
 
-        await _watchdog.CheckAsync();
+        await DeadHookOverTwoChecksAsync();
 
         Assert.Equal(0, _hook.Reinstalls);
     }
@@ -69,16 +111,20 @@ public sealed class HookWatchdogTests : IDisposable
     [Fact]
     public async Task Reinstalls_AreThrottled()
     {
-        _hook.LastCallbackTick = 10_000;
-        _lastSystemInput = 15_000;
         _hook.ReinstallLeavesItDead = true;
 
-        await _watchdog.CheckAsync();
+        await DeadHookOverTwoChecksAsync();
         _time.Advance(TimeSpan.FromSeconds(5));
+        _lastSystemInput = 19_000;
+        await _watchdog.CheckAsync();
+        _lastSystemInput = 21_000;
         await _watchdog.CheckAsync();
         Assert.Equal(1, _hook.Reinstalls);
 
         _time.Advance(HookWatchdogOptions.Default.MinReinstallGap);
+        _lastSystemInput = 23_000;
+        await _watchdog.CheckAsync();
+        _lastSystemInput = 25_000;
         await _watchdog.CheckAsync();
         Assert.Equal(2, _hook.Reinstalls);
     }
@@ -88,11 +134,9 @@ public sealed class HookWatchdogTests : IDisposable
     {
         Exception? failure = null;
         _watchdog.ReinstallFailed += ex => failure = ex;
-        _hook.LastCallbackTick = 10_000;
-        _lastSystemInput = 15_000;
         _hook.ReinstallThrows = true;
 
-        await _watchdog.CheckAsync();
+        await DeadHookOverTwoChecksAsync();
 
         Assert.IsType<InvalidOperationException>(failure);
     }
@@ -113,7 +157,10 @@ public sealed class HookWatchdogTests : IDisposable
     {
         _hook.LastCallbackTick = 10_000;
         _lastSystemInput = 15_000;
+        _time.Advance(HookWatchdogOptions.Default.Interval);
+        await _watchdog.IdleAsync();
 
+        _lastSystemInput = 17_000;
         _time.Advance(HookWatchdogOptions.Default.Interval);
         await _watchdog.IdleAsync();
 

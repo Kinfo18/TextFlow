@@ -26,7 +26,9 @@ public sealed partial class HookWatchdogDesktopTests
         await hook.SimulateSilentRemovalAsync();
         await Task.Delay(1_500);
         await NudgeMouseAsync(); // input the dead hook cannot see
-
+        await watchdog.CheckAsync();
+        await Task.Delay(200);
+        await NudgeMouseAsync(); // more of it: confirmed dead
         await watchdog.CheckAsync();
         Assert.Equal(1, reinstalls);
 

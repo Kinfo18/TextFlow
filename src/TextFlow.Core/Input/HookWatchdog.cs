@@ -24,9 +24,14 @@ public sealed record HookWatchdogOptions(TimeSpan Interval, TimeSpan MissedInput
 
 /// <summary>
 /// Risk R3: Windows removes a low-level hook without notice when a callback exceeds LowLevelHooksTimeout,
-/// and TextFlow would silently stop expanding. If the system saw input (GetLastInputInfo) that the hook never
-/// saw, the hook is dead: install it again.
+/// and TextFlow would silently stop expanding. If the system keeps seeing input (GetLastInputInfo) while the hook
+/// sees none, the hook is dead: install it again.
 /// </summary>
+/// <remarks>
+/// One gap is not enough: touchpad contact without movement updates the system's last input but sends no mouse
+/// event (false alarms on the dev laptop, 2026-10-03). A dead hook is frozen, so the gap must hold on two checks in
+/// a row with the system input still advancing and the hook's last callback unchanged.
+/// </remarks>
 public sealed class HookWatchdog : IDisposable
 {
     private readonly IReinstallableHook _hook;
@@ -36,6 +41,7 @@ public sealed class HookWatchdog : IDisposable
     private readonly HookWatchdogOptions _options;
     private readonly ITimer _timer;
     private int _checking;
+    private (uint Callback, uint Input)? _suspect;
     private DateTimeOffset? _lastReinstall;
     private int _reinstalls;
     private Task _lastCheck = Task.CompletedTask;
@@ -77,11 +83,22 @@ public sealed class HookWatchdog : IDisposable
 
         try
         {
-            var missedMs = MissedInputMs();
+            var (callback, input) = (_hook.LastCallbackTick, _lastSystemInputTick());
+            var missedMs = unchecked((int)(input - callback));
             if (missedMs <= _options.MissedInputGrace.TotalMilliseconds || _foregroundBlocksHook() || Throttled())
             {
+                _suspect = null;
                 return;
             }
+
+            var stillDead = _suspect is { } previous && previous.Callback == callback && previous.Input != input;
+            if (!stillDead)
+            {
+                _suspect = (callback, input); // confirm on the next check
+                return;
+            }
+
+            _suspect = null;
 
             _lastReinstall = _time.GetUtcNow(); // throttle failures too
             try
@@ -103,8 +120,6 @@ public sealed class HookWatchdog : IDisposable
     }
 
     /// <summary>Unsigned difference, so the 49.7-day GetTickCount wrap does not look like a huge gap.</summary>
-    private int MissedInputMs() => unchecked((int)(_lastSystemInputTick() - _hook.LastCallbackTick));
-
     private bool Throttled() => _lastReinstall is { } last && _time.GetUtcNow() - last < _options.MinReinstallGap;
 
     public void Dispose() => _timer.Dispose();
