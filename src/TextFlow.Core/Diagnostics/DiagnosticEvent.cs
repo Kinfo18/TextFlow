@@ -1,5 +1,4 @@
 using TextFlow.Contracts.Insertion;
-using TextFlow.Contracts.Targeting;
 
 namespace TextFlow.Core.Diagnostics;
 
@@ -19,7 +18,7 @@ public abstract record DiagnosticEvent(DateTimeOffset At);
 public sealed record ExpansionCompleted(
     DateTimeOffset At,
     [property: SafeToLog] string TargetProcess,
-    InsertionStrategyKind Strategy,
+    InsertionStrategyKind? Strategy,
     InsertionStatus Status,
     double ElapsedMs,
     bool FromMenu,
@@ -29,11 +28,14 @@ public sealed record MenuShown(DateTimeOffset At, [property: SafeToLog] string T
 
 public sealed record MenuClosed(DateTimeOffset At, MenuCloseReason Reason) : DiagnosticEvent(At);
 
-public sealed record TargetRejected(DateTimeOffset At, [property: SafeToLog] string TargetProcess, TargetValidationStatus Status) : DiagnosticEvent(At);
+public sealed record TargetRejected(DateTimeOffset At, [property: SafeToLog] string TargetProcess, RejectionReason Reason) : DiagnosticEvent(At);
 
 public sealed record HookReinstalled(DateTimeOffset At, int TimesThisSession) : DiagnosticEvent(At);
 
 public sealed record EngineStateChanged(DateTimeOffset At, EngineState State) : DiagnosticEvent(At);
+
+/// <summary>An event failed and was skipped; the engine keeps running. Only the exception type, never its message.</summary>
+public sealed record EngineFault(DateTimeOffset At, [property: SafeToLog] string ExceptionType) : DiagnosticEvent(At);
 
 public enum MenuCloseReason
 {
@@ -43,6 +45,13 @@ public enum MenuCloseReason
     ClickOutside,
     FocusChanged,
     LongerTrigger,
+}
+
+public enum RejectionReason
+{
+    NoTarget,
+    WindowChanged,
+    PolicyDenied,
 }
 
 public enum EngineState

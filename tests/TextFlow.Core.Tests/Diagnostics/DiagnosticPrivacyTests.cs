@@ -10,7 +10,7 @@ namespace TextFlow.Core.Tests.Diagnostics;
 /// </summary>
 public class DiagnosticPrivacyTests
 {
-    private static readonly HashSet<string> SafeStringProperties = ["TargetProcess", "Reason"];
+    private static readonly HashSet<string> SafeStringProperties = ["TargetProcess", "Reason", "ExceptionType"];
 
     private static readonly Type[] EventTypes = typeof(DiagnosticEvent).Assembly.GetTypes()
         .Where(t => t.IsSubclassOf(typeof(DiagnosticEvent)) && !t.IsAbstract)

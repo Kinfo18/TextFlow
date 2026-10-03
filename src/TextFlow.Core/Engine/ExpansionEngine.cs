@@ -1,0 +1,477 @@
+using System.Threading.Channels;
+using TextFlow.Contracts.Insertion;
+using TextFlow.Contracts.Targeting;
+using TextFlow.Core.Diagnostics;
+using TextFlow.Core.Expansion;
+using TextFlow.Core.Input;
+using TextFlow.Core.Menus;
+using TextFlow.Core.Security;
+
+namespace TextFlow.Core.Engine;
+
+/// <summary>
+/// Orchestrates hook → trigger → group menu or snippet → insertion → chime (spec §8, ADR-0007/0008).
+/// Every event is handled on one loop, in order, so the state (open menu, pending trigger) needs no locks.
+/// Hook events take priority over internal work (menu results, timeouts, pause) so a typed key is never
+/// overtaken by an older timeout.
+/// </summary>
+/// <remarks>Fails closed: capture is off while paused, in excluded apps, without a target and after the loop stops.</remarks>
+public sealed class ExpansionEngine
+{
+    private readonly IInputHook _hook;
+    private readonly ITargetResolver _resolver;
+    private readonly SecurityPolicy _policy;
+    private readonly ITextInsertionService _insertion;
+    private readonly IMenuPresenter _menu;
+    private readonly IExpansionFeedback _feedback;
+    private readonly IPointerLocator _pointer;
+    private readonly IDiagnosticSink _sink;
+    private readonly TimeProvider _time;
+    private readonly ExpansionEngineOptions _options;
+    private readonly Channel<EngineWork> _inbox = Channel.CreateUnbounded<EngineWork>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly List<Barrier> _barriers = [];
+
+    private volatile LibraryIndex? _index;
+    private volatile bool _paused;
+    private OpenMenu? _open;
+    private int _menuSession;
+    private MenuCloseReason? _closeReason;
+    private ITimer? _pendingTimer;
+    private CancellationToken _stopping;
+
+    public ExpansionEngine(
+        IInputHook hook,
+        ITargetResolver resolver,
+        SecurityPolicy policy,
+        ITextInsertionService insertion,
+        IMenuPresenter menu,
+        IExpansionFeedback feedback,
+        IPointerLocator pointerLocator,
+        IDiagnosticSink sink,
+        TimeProvider time,
+        ExpansionEngineOptions options)
+    {
+        _hook = hook;
+        _resolver = resolver;
+        _policy = policy;
+        _insertion = insertion;
+        _menu = menu;
+        _feedback = feedback;
+        _pointer = pointerLocator;
+        _sink = sink;
+        _time = time;
+        _options = options;
+    }
+
+    public bool IsPaused => _paused;
+
+    /// <summary>Installs a library (startup or hot reload). Triggers of the previous one stop firing.</summary>
+    public async Task LoadAsync(LibraryIndex index)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        _index = index;
+        await _hook.ReplaceTriggersAsync(index.Triggers).ConfigureAwait(false);
+    }
+
+    /// <summary>Stops capturing at once (any thread). An open menu closes; triggers already queued do not expand.</summary>
+    public void Pause()
+    {
+        _paused = true;
+        _hook.CaptureEnabled = false;
+        _inbox.Writer.TryWrite(new PauseChanged(Paused: true));
+    }
+
+    public void Resume()
+    {
+        _paused = false;
+        _inbox.Writer.TryWrite(new PauseChanged(Paused: false));
+    }
+
+    /// <summary>Completes once every event queued before the call (and the work it caused) has been handled.</summary>
+    public Task IdleAsync()
+    {
+        var barrier = new Barrier(new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        if (!_inbox.Writer.TryWrite(barrier))
+        {
+            barrier.Done.TrySetResult();
+        }
+
+        return barrier.Done.Task;
+    }
+
+    public async Task RunAsync(CancellationToken ct)
+    {
+        _stopping = ct;
+        _menu.Finished += OnMenuFinished;
+        try
+        {
+            Record(new EngineStateChanged(Now, EngineState.Starting));
+            await RefreshCaptureAsync().ConfigureAwait(false);
+            Record(new EngineStateChanged(Now, _paused ? EngineState.Paused : EngineState.Running));
+
+            while (await NextAsync(ct).ConfigureAwait(false) is { } work)
+            {
+                await HandleSafelyAsync(work).ConfigureAwait(false);
+            }
+
+            Record(new EngineFault(Now, nameof(ChannelClosedException))); // the hook stopped: nothing more can expand
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+        finally
+        {
+            Shutdown();
+        }
+    }
+
+    /// <summary>Next hook event or inbox work; null when the hook channel closed.</summary>
+    private async Task<object?> NextAsync(CancellationToken ct)
+    {
+        while (true)
+        {
+            if (_hook.Events.TryRead(out var hookEvent))
+            {
+                return hookEvent;
+            }
+
+            if (_inbox.Reader.TryRead(out var work))
+            {
+                if (work is Barrier barrier)
+                {
+                    _barriers.Add(barrier);
+                    continue;
+                }
+
+                return work;
+            }
+
+            // Both queues are empty and nothing is being handled: everyone waiting for idle can go.
+            ReleaseBarriers();
+
+            if (!await WaitForWorkAsync(ct).ConfigureAwait(false))
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>Waits for either queue with one waiter each, cancelling the loser so waiters never pile up.</summary>
+    /// <returns>False when the hook channel completed.</returns>
+    private async Task<bool> WaitForWorkAsync(CancellationToken ct)
+    {
+        using var wake = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var hookReady = _hook.Events.WaitToReadAsync(wake.Token).AsTask();
+        var inboxReady = _inbox.Reader.WaitToReadAsync(wake.Token).AsTask();
+        var first = await Task.WhenAny(hookReady, inboxReady).ConfigureAwait(false);
+        await wake.CancelAsync().ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+
+        return first != hookReady || await hookReady.ConfigureAwait(false);
+    }
+
+    private void ReleaseBarriers()
+    {
+        foreach (var barrier in _barriers)
+        {
+            barrier.Done.TrySetResult();
+        }
+
+        _barriers.Clear();
+    }
+
+    /// <summary>A failure in one event (UIA, insertion) must not kill the engine: close the menu and keep going.</summary>
+    private async Task HandleSafelyAsync(object work)
+    {
+        try
+        {
+            await HandleAsync(work).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Record(new EngineFault(Now, ex.GetType().Name));
+            CancelMenu(reason: null);
+        }
+    }
+
+    private Task HandleAsync(object work) => work switch
+    {
+        TriggerPending pending => HandlePendingAsync(pending),
+        TriggerTyped typed => HandleTriggerAsync(typed.Match, typed.ForegroundWindow),
+        MenuKeyPressed key when _open is not null => SendToMenu(key.Input),
+        MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
+        ForegroundChanged => HandleForegroundChangedAsync(),
+        MenuFinished finished when _open?.Session == finished.Session => FinishMenuAsync(finished.Step),
+        PendingElapsed elapsed => _hook.FlushPendingAsync(elapsed.Version),
+        PauseChanged change => ApplyPauseAsync(change.Paused),
+        _ => Task.CompletedTask, // stale menu result, or menu input with no menu
+    };
+
+    private Task HandlePendingAsync(TriggerPending pending)
+    {
+        if (!_paused && _index?.FindMenu(pending.Match.SnippetId) is not null)
+        {
+            // Menus open at once; a key that continues a longer trigger ("cp" + '1') still fires it.
+            return HandleTriggerAsync(pending.Match, pending.ForegroundWindow);
+        }
+
+        _pendingTimer?.Dispose();
+        _pendingTimer = _time.CreateTimer(
+            _ => _inbox.Writer.TryWrite(new PendingElapsed(pending.Version)), null, _options.PendingTimeout, Timeout.InfiniteTimeSpan);
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleTriggerAsync(TriggerMatch match, nint foregroundWindow)
+    {
+        CancelMenu(MenuCloseReason.LongerTrigger); // "cp" menu was open and the user completed "cp1"
+        DisposePendingTimer();
+
+        var index = _index;
+        var target = await CaptureTargetAsync().ConfigureAwait(false);
+        if (Reject(target, foregroundWindow) is { } reason)
+        {
+            Record(new TargetRejected(Now, target?.ProcessName ?? string.Empty, reason));
+            if (reason != RejectionReason.WindowChanged)
+            {
+                await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false); // never into a window the user did not type in
+            }
+
+            return;
+        }
+
+        if (_paused)
+        {
+            await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false); // typed before the pause: give the key back
+        }
+        else if (index?.FindSnippet(match.SnippetId) is { } snippet)
+        {
+            await ExpandSnippetAsync(target!, snippet, match).ConfigureAwait(false);
+        }
+        else if (index?.FindMenu(match.SnippetId) is { } menu)
+        {
+            await OpenMenuAsync(target!, menu, match).ConfigureAwait(false);
+        }
+        else
+        {
+            await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false); // library reloaded meanwhile
+        }
+    }
+
+    private RejectionReason? Reject(ActiveTarget? target, nint foregroundWindow)
+    {
+        if (target is null)
+        {
+            return RejectionReason.NoTarget; // the swallowed key is lost: there is nowhere safe to type it
+        }
+
+        if (target.WindowHandle != foregroundWindow)
+        {
+            return RejectionReason.WindowChanged;
+        }
+
+        return _policy.Evaluate(target, TextFlowFeature.Expansion).IsAllowed ? null : RejectionReason.PolicyDenied;
+    }
+
+    private async Task ExpandSnippetAsync(ActiveTarget target, MenuSnippetEntry snippet, TriggerMatch match)
+    {
+        // A pending trigger broken by another key carries that key as Delimiter: type it after the expansion.
+        var trailing = match.Delimiter is { } key and not ('\r' or '\t') ? key.ToString() : string.Empty;
+        var result = await ExpandAsync(target, snippet.Content + trailing, match.Backspaces, fromMenu: false).ConfigureAwait(false);
+        if (!result.Succeeded && !result.InputSent)
+        {
+            await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false);
+        }
+    }
+
+    private async Task OpenMenuAsync(ActiveTarget target, GroupMenu menu, TriggerMatch match)
+    {
+        if (match.Delimiter is not null)
+        {
+            // "cp" + another key: the user kept typing, so no menu (same as a menu dismissed by that key).
+            await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false);
+            return;
+        }
+
+        var caret = target.Control.CaretBounds;
+        _open = new OpenMenu(target, match, ++_menuSession);
+        _closeReason = null;
+        _hook.MenuMode = true;
+        _menu.Show(menu, caret ?? _pointer.CursorAnchor(), target.Monitor, _open.Session);
+        Record(new MenuShown(Now, target.ProcessName, AnchoredToCaret: caret is not null));
+    }
+
+    private Task SendToMenu(MenuInput input)
+    {
+        _menu.Send(input);
+        return Task.CompletedTask;
+    }
+
+    private Task InterruptMenu(MenuInterrupted interrupted)
+    {
+        if (interrupted is { ClickX: { } x, ClickY: { } y })
+        {
+            if (_menu.Contains(x, y))
+            {
+                return Task.CompletedTask; // clicking an entry is the menu's own business
+            }
+
+            _closeReason = MenuCloseReason.ClickOutside;
+        }
+        else
+        {
+            _closeReason = MenuCloseReason.OtherKey;
+        }
+
+        _menu.Dismiss(); // reports back through Finished
+        return Task.CompletedTask;
+    }
+
+    private async Task FinishMenuAsync(MenuStep step)
+    {
+        var open = _open!;
+        _open = null;
+        _hook.MenuMode = false;
+
+        var reason = step.Chosen is not null ? MenuCloseReason.Chosen : _closeReason ?? MenuCloseReason.Escape;
+        Record(new MenuClosed(Now, reason));
+
+        if (step.Chosen is { } snippet && !_paused)
+        {
+            await ExpandAsync(open.Target, snippet.Content, open.Match.Backspaces, fromMenu: true).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleForegroundChangedAsync()
+    {
+        CancelMenu(MenuCloseReason.FocusChanged);
+        DisposePendingTimer();
+        await RefreshCaptureAsync().ConfigureAwait(false);
+    }
+
+    private async Task ApplyPauseAsync(bool paused)
+    {
+        if (paused)
+        {
+            CancelMenu(reason: null);
+            DisposePendingTimer();
+        }
+
+        await RefreshCaptureAsync().ConfigureAwait(false);
+        Record(new EngineStateChanged(Now, _paused ? EngineState.Paused : EngineState.Running));
+    }
+
+    /// <summary>Hides an open menu without inserting; <paramref name="reason"/> null skips the diagnostic.</summary>
+    private void CancelMenu(MenuCloseReason? reason)
+    {
+        _hook.MenuMode = false;
+        if (_open is null)
+        {
+            return;
+        }
+
+        _open = null;
+        _menu.Cancel();
+        if (reason is { } closed)
+        {
+            Record(new MenuClosed(Now, closed));
+        }
+    }
+
+    private void DisposePendingTimer()
+    {
+        _pendingTimer?.Dispose();
+        _pendingTimer = null;
+    }
+
+    private async Task RefreshCaptureAsync()
+    {
+        _hook.CaptureEnabled = false;
+        if (_paused)
+        {
+            return;
+        }
+
+        var target = await CaptureTargetAsync().ConfigureAwait(false);
+        _hook.CaptureEnabled = target is not null && _policy.Evaluate(target, TextFlowFeature.Expansion).IsAllowed;
+        if (_paused)
+        {
+            _hook.CaptureEnabled = false; // Pause() ran while we evaluated
+        }
+    }
+
+    /// <summary>Null when nothing is focused or UIA did not answer in time (the call keeps running in the background).</summary>
+    private async Task<ActiveTarget?> CaptureTargetAsync()
+    {
+        try
+        {
+            return await Task.Run(_resolver.CaptureTarget, _stopping)
+                .WaitAsync(_options.CaptureTimeout, _time, _stopping)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<InsertionResult> ExpandAsync(ActiveTarget target, string text, int backspaces, bool fromMenu)
+    {
+        var result = await _insertion.InsertAsync(new InsertionRequest(target, text, backspaces), _stopping).ConfigureAwait(false);
+        var played = result.Succeeded && _feedback.Play();
+        Record(new ExpansionCompleted(
+            Now, target.ProcessName, result.Strategy, result.Status, result.Elapsed.TotalMilliseconds, fromMenu, played));
+        return result;
+    }
+
+    /// <summary>Types back a key the hook swallowed for a trigger that did not expand.</summary>
+    private async Task ReEmitAsync(ActiveTarget? target, char? swallowed)
+    {
+        if (target is null || swallowed is not { } key)
+        {
+            return;
+        }
+
+        var text = key == '\r' ? "\n" : key.ToString(); // SendInput turns \n into a real Enter key
+        await _insertion.InsertAsync(
+            new InsertionRequest(target, text, PreferredStrategy: InsertionStrategyKind.SendInput), _stopping).ConfigureAwait(false);
+    }
+
+    private void OnMenuFinished(int session, MenuStep step) => _inbox.Writer.TryWrite(new MenuFinished(session, step));
+
+    private void Shutdown()
+    {
+        _menu.Finished -= OnMenuFinished;
+        DisposePendingTimer();
+        CancelMenu(reason: null);
+        _hook.CaptureEnabled = false;
+        Record(new EngineStateChanged(Now, EngineState.Stopped));
+
+        _inbox.Writer.TryComplete(); // later IdleAsync calls complete at once
+        while (_inbox.Reader.TryRead(out var work))
+        {
+            if (work is Barrier barrier)
+            {
+                _barriers.Add(barrier);
+            }
+        }
+
+        ReleaseBarriers();
+    }
+
+    private void Record(DiagnosticEvent diagnostic) => _sink.Record(diagnostic);
+
+    private DateTimeOffset Now => _time.GetUtcNow();
+
+    private sealed record OpenMenu(ActiveTarget Target, TriggerMatch Match, int Session);
+
+    private abstract record EngineWork;
+
+    private sealed record MenuFinished(int Session, MenuStep Step) : EngineWork;
+
+    private sealed record PendingElapsed(int Version) : EngineWork;
+
+    private sealed record PauseChanged(bool Paused) : EngineWork;
+
+    private sealed record Barrier(TaskCompletionSource Done) : EngineWork;
+}

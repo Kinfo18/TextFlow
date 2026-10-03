@@ -9,6 +9,7 @@ using TextFlow.Core.Security;
 using TextFlow.Core.Templates;
 using TextFlow.Infrastructure.Clipboard;
 using TextFlow.Infrastructure.Feedback;
+using TextFlow.Core.Input;
 using TextFlow.Infrastructure.Hooks;
 using TextFlow.Infrastructure.Input;
 using TextFlow.Infrastructure.Targeting;
