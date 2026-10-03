@@ -13,6 +13,7 @@ public enum TrayCommand
 {
     Open,
     TogglePause,
+    ToggleStartWithWindows,
     Exit,
 }
 
@@ -28,6 +29,7 @@ public sealed partial class TrayIcon : IDisposable
     private const uint OpenId = 1;
     private const uint PauseId = 2;
     private const uint ExitId = 3;
+    private const uint StartupId = 4;
 
     private static TrayIcon? s_instance;
 
@@ -42,6 +44,7 @@ public sealed partial class TrayIcon : IDisposable
 
     private HINSTANCE _module;
     private volatile bool _paused;
+    private volatile bool _startWithWindows;
     private volatile bool _added;
     private volatile bool _disposed;
 
@@ -83,6 +86,9 @@ public sealed partial class TrayIcon : IDisposable
         _paused = paused;
         _ = _thread.InvokeAsync(() => Notify(NotifyMessage.Modify));
     }
+
+    /// <summary>Check mark of the "Iniciar con Windows" entry.</summary>
+    public void SetStartWithWindows(bool enabled) => _startWithWindows = enabled;
 
     private unsafe void Create()
     {
@@ -202,6 +208,7 @@ public sealed partial class TrayIcon : IDisposable
         {
             Append(menu, OpenId, "Abrir TextFlow");
             Append(menu, PauseId, _paused ? "Reanudar expansiones" : "Pausar expansiones");
+            Append(menu, StartupId, "Iniciar con Windows", _startWithWindows ? MENU_ITEM_FLAGS.MF_CHECKED : 0);
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, (PCWSTR)null);
             Append(menu, ExitId, "Salir");
             PInvoke.SetMenuDefaultItem(menu, OpenId, 0);
@@ -226,6 +233,9 @@ public sealed partial class TrayIcon : IDisposable
                 case PauseId:
                     Raise(TrayCommand.TogglePause);
                     break;
+                case StartupId:
+                    Raise(TrayCommand.ToggleStartWithWindows);
+                    break;
                 case ExitId:
                     Raise(TrayCommand.Exit);
                     break;
@@ -237,18 +247,18 @@ public sealed partial class TrayIcon : IDisposable
         }
     }
 
-    private unsafe static void Append(HMENU menu, uint id, string text)
+    private static unsafe void Append(HMENU menu, uint id, string text, MENU_ITEM_FLAGS extra = 0)
     {
         fixed (char* label = text)
         {
-            PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING, id, label);
+            PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_STRING | extra, id, label);
         }
     }
 
     /// <summary>Off the tray thread: subscribers may block (open a window, stop the engine).</summary>
     private void Raise(TrayCommand command) => ThreadPool.QueueUserWorkItem(_ => CommandInvoked?.Invoke(command));
 
-    private unsafe static HICON CreateIcon(int size, bool paused)
+    private static unsafe HICON CreateIcon(int size, bool paused)
     {
         var pixels = TrayIconArt.Render(size, paused);
         var header = new BITMAPINFO
@@ -334,7 +344,7 @@ public sealed partial class TrayIcon : IDisposable
 
     [LibraryImport("shell32.dll", EntryPoint = "Shell_NotifyIconW")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private unsafe static partial bool ShellNotifyIcon(NotifyMessage message, NotifyIconData* data);
+    private static unsafe partial bool ShellNotifyIcon(NotifyMessage message, NotifyIconData* data);
 
     private enum NotifyMessage : uint
     {

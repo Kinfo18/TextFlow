@@ -16,13 +16,15 @@ namespace TextFlow.App;
 /// </summary>
 public partial class App : Application, IDisposable
 {
-    /// <summary>Start in the tray without showing the window (used by start with Windows, H1.3).</summary>
-    private const string BackgroundArgument = "--background";
+    private const string InstanceName = "TextFlow";
 
     private readonly IHost _host;
     private DispatcherQueue? _ui;
     private EngineHost? _engine;
     private TrayIcon? _tray;
+    private SingleInstance? _instance;
+    private AppSettings _settings = new();
+    private StartupRegistration? _startup;
     private MainWindow? _window;
     private bool _exiting;
 
@@ -52,6 +54,24 @@ public partial class App : Application, IDisposable
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         _ui = DispatcherQueue.GetForCurrentThread();
+        var background = Environment.GetCommandLineArgs().Contains(StartupRegistration.BackgroundArgument, StringComparer.OrdinalIgnoreCase);
+
+        _instance = new SingleInstance(InstanceName);
+        if (!_instance.IsFirst)
+        {
+            // Two hooks would expand everything twice: hand over to the running instance and leave.
+            if (!background)
+            {
+                _instance.ActivateFirst();
+            }
+
+            _instance.Dispose();
+            Exit();
+            return;
+        }
+
+        var ui = _ui;
+        _instance.Activated += () => ui.TryEnqueue(ShowWindow);
         try
         {
             await StartAsync(_ui);
@@ -65,7 +85,7 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        if (!Environment.GetCommandLineArgs().Contains(BackgroundArgument, StringComparer.OrdinalIgnoreCase))
+        if (!background)
         {
             ShowWindow();
         }
@@ -79,7 +99,8 @@ public partial class App : Application, IDisposable
         popup.Prime();
 
         var paths = Services.GetRequiredService<AppPaths>();
-        _engine = new EngineHost(AppSettings.Load(paths.Settings), new WinUiMenuPresenter(ui, popup), Services.GetRequiredService<IDiagnosticSink>());
+        _settings = AppSettings.Load(paths.Settings);
+        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), Services.GetRequiredService<IDiagnosticSink>());
         await _engine.StartAsync();
 
         var tray = new TrayIcon();
@@ -91,6 +112,39 @@ public partial class App : Application, IDisposable
             ui.TryEnqueue(() => _window?.Refresh());
         };
         _tray = tray;
+
+        _startup = new StartupRegistration(InstanceName, Environment.ProcessPath!);
+        ApplyStartWithWindows(_settings.StartWithWindows);
+    }
+
+    /// <summary>Syncs the Run entry (also repairs its path if the app moved) and the tray check mark.</summary>
+    private void ApplyStartWithWindows(bool enabled)
+    {
+        try
+        {
+            _startup?.Apply(enabled);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            RecordFault(ex); // policy-locked registry: TextFlow still runs, just not at logon
+        }
+
+        _tray?.SetStartWithWindows(_startup?.IsEnabled ?? false);
+    }
+
+    private void ToggleStartWithWindows()
+    {
+        _settings = _settings with { StartWithWindows = !_settings.StartWithWindows };
+        try
+        {
+            _settings.Save(Services.GetRequiredService<AppPaths>().Settings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            RecordFault(ex);
+        }
+
+        ApplyStartWithWindows(_settings.StartWithWindows);
     }
 
     private void OnTrayCommand(TrayCommand command)
@@ -102,6 +156,9 @@ public partial class App : Application, IDisposable
                 break;
             case TrayCommand.TogglePause:
                 _engine?.TogglePause();
+                break;
+            case TrayCommand.ToggleStartWithWindows:
+                ToggleStartWithWindows();
                 break;
             case TrayCommand.Exit:
                 _ = ExitAsync();
@@ -164,6 +221,7 @@ public partial class App : Application, IDisposable
         finally
         {
             _host.Dispose();
+            _instance?.Dispose();
             Exit();
         }
     }
@@ -186,6 +244,7 @@ public partial class App : Application, IDisposable
         _tray?.Dispose();
         _engine?.DisposeAsync().AsTask().GetAwaiter().GetResult(); // no-op after ExitAsync
         _host.Dispose();
+        _instance?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

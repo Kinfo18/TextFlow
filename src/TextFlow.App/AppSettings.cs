@@ -8,7 +8,8 @@ namespace TextFlow.App;
 /// </summary>
 /// <param name="ATextBackupPath">aText backup loaded as the library (H1.5, provisional until the importer in H2).</param>
 /// <param name="ChimeVolume">0-1.</param>
-public sealed record AppSettings(string? ATextBackupPath = null, double ChimeVolume = 1.0)
+/// <param name="StartWithWindows">Kept in sync with the HKCU Run entry at every start (H1.3).</param>
+public sealed record AppSettings(string? ATextBackupPath = null, double ChimeVolume = 1.0, bool StartWithWindows = true)
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 

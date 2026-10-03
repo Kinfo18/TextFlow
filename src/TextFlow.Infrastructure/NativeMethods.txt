@@ -98,3 +98,4 @@ GetDpiForSystem
 WM_LBUTTONUP
 WM_RBUTTONUP
 WM_NULL
+AllowSetForegroundWindow
