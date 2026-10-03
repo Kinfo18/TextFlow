@@ -8,7 +8,8 @@ namespace TextFlow.App.Pages;
 internal static class GroupDialog
 {
     /// <returns>The validated group, or null when cancelled.</returns>
-    public static async Task<GroupInfo?> EditAsync(XamlRoot root, GroupDraft draft, bool isNew)
+    /// <param name="library">Current library, for the live abbreviation warnings (H3.5).</param>
+    public static async Task<GroupInfo?> EditAsync(XamlRoot root, GroupDraft draft, bool isNew, LibraryGroup library)
     {
         var name = new TextBox { Header = "Nombre", Text = draft.Name, PlaceholderText = "Por ejemplo: Local cerrado" };
         var abbreviation = new TextBox
@@ -30,9 +31,17 @@ internal static class GroupDialog
             TextWrapping = TextWrapping.Wrap,
         };
 
+        var warnings = new StackPanel { Spacing = 4, Visibility = Visibility.Collapsed };
+        void UpdateWarnings() => AbbreviationWarningsView.Render(
+            warnings, AbbreviationAdvisor.ForGroup(library, draft.Id, abbreviation.Text, ignoreCase.IsOn));
+        abbreviation.TextChanged += (_, _) => UpdateWarnings();
+        ignoreCase.Toggled += (_, _) => UpdateWarnings();
+        UpdateWarnings();
+
         var panel = new StackPanel { Spacing = 14, MinWidth = 380 };
         panel.Children.Add(name);
         panel.Children.Add(abbreviation);
+        panel.Children.Add(warnings);
         panel.Children.Add(ignoreCase);
         panel.Children.Add(error);
 

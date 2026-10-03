@@ -264,6 +264,8 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         {
             _loadingEditor = false;
         }
+
+        UpdateWarnings();
     }
 
     private void ShowEmptyEditor()
@@ -284,11 +286,29 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
     private void MarkDirty()
     {
+        if (_draft is not null)
+        {
+            UpdateWarnings();
+        }
+
         if (!_loadingEditor && _draft is not null)
         {
             SetDirty(true);
             EditorMessage.Text = string.Empty;
         }
+    }
+
+    /// <summary>H3.5: clashes, prefix waits and common words, live while typing (never blocks saving).</summary>
+    private void UpdateWarnings()
+    {
+        if (_draft is null || _draftGroupId is not { } groupId)
+        {
+            return;
+        }
+
+        var draft = CurrentDraft();
+        AbbreviationWarningsView.Render(
+            AbbreviationWarnings, AbbreviationAdvisor.ForSnippet(Library, draft.Id, groupId, draft.Abbreviations, draft.Mode));
     }
 
     private void SetDirty(bool dirty)
@@ -506,7 +526,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         try
         {
             var parent = SelectedGroup;
-            if (await GroupDialog.EditAsync(XamlRoot, GroupDraft.New(parent.Id), isNew: true) is { } info
+            if (await GroupDialog.EditAsync(XamlRoot, GroupDraft.New(parent.Id), isNew: true, Library) is { } info
                 && await App.Current.EditLibraryAsync(XamlRoot, service => service.SaveGroupAsync(info, CancellationToken.None)))
             {
                 _selectedGroupId = info.Id;
@@ -529,7 +549,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
                 return;
             }
 
-            if (await GroupDialog.EditAsync(XamlRoot, GroupDraft.From(group, parentId), isNew: false) is { } info
+            if (await GroupDialog.EditAsync(XamlRoot, GroupDraft.From(group, parentId), isNew: false, Library) is { } info
                 && await App.Current.EditLibraryAsync(XamlRoot, service => service.SaveGroupAsync(info, CancellationToken.None)))
             {
                 Refresh();

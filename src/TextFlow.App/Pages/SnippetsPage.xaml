@@ -96,8 +96,11 @@
                             <TextBlock x:Name="DetailTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                             <TextBlock x:Name="DetailPath" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
                         </StackPanel>
-                        <TextBox x:Name="AbbreviationsBox" Header="Abreviaturas (una por línea)" AcceptsReturn="True" TextWrapping="Wrap"
-                                 MinHeight="60" TextChanged="OnEdited" />
+                        <StackPanel Spacing="6">
+                            <TextBox x:Name="AbbreviationsBox" Header="Abreviaturas (una por línea)" AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="60" TextChanged="OnEdited" />
+                            <StackPanel x:Name="AbbreviationWarnings" Spacing="4" Visibility="Collapsed" />
+                        </StackPanel>
                         <TextBox x:Name="NameBox" Header="Nombre en el menú" PlaceholderText="Si lo dejas vacío, se usa la primera abreviatura"
                                  TextChanged="OnEdited" />
                         <TextBox x:Name="ContentBox" Header="Texto que se inserta" AcceptsReturn="True" TextWrapping="Wrap"
