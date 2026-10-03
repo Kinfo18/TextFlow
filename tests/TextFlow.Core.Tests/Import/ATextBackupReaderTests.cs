@@ -23,7 +23,11 @@ public class ATextBackupReaderTests
           {"99":1,"0":"g-od2","2":"Orden dañada","8":1,"12":1,"14":"od","13":[
             {"0":"s-4","1":["Vacío"],"3":"t","13":1}
           ]},
-          {"99":1,"0":"g-od1","2":"Orden demorada","8":1,"12":1,"14":"OD","13":[]}
+          {"99":1,"0":"g-od1","2":"Orden demorada","8":1,"12":1,"14":"OD","13":[]},
+          {"99":1,"0":"g-t1","2":"Temples","12":1,"14":"T1","13":[
+            {"0":"s-cc","1":["cc"],"3":"t","4":"mensaje cc","13":1},
+            {"0":"s-multi","1":["s1","saludo1"],"3":"t","4":"mensaje s1","13":1}
+          ]}
         ]}]
         """;
 
@@ -53,7 +57,7 @@ public class ATextBackupReaderTests
         var import = Read();
 
         Assert.Equal("Xtendo", import.Root.Name);
-        Assert.Equal(4, import.Root.Groups.Count);
+        Assert.Equal(5, import.Root.Groups.Count);
         Assert.Equal("LC", Group(import, "g-lc").Abbreviation);
         Assert.Null(Group(import, "g-sub").Abbreviation);
     }
@@ -155,5 +159,24 @@ public class ATextBackupReaderTests
     public void Read_RejectsFileWithoutHeaderSeparator()
     {
         Assert.Throws<InvalidDataException>(() => ATextBackupReader.Read(new MemoryStream(Encoding.UTF8.GetBytes("[]"))));
+    }
+
+    [Fact]
+    public void Read_SnippetField1_IsTheAbbreviationList()
+    {
+        var t1 = Group(Read(), "g-t1");
+
+        Assert.Equal(["cc"], t1.Snippets[0].Abbreviations);
+        Assert.Equal(["s1", "saludo1"], t1.Snippets[1].Abbreviations);
+        Assert.Equal("s1", t1.Snippets[1].Name);
+    }
+
+    [Fact]
+    public void TypeableAbbreviations_IncludeThoseWithSpaces_AsInAText()
+    {
+        var import = Read();
+
+        Assert.Equal(["No confirmado"], Group(import, "g-lc").Snippets[0].TypeableAbbreviations);
+        Assert.Equal(["cc"], Group(import, "g-t1").Snippets[0].TypeableAbbreviations);
     }
 }

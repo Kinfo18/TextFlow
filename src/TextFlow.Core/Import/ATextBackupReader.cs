@@ -21,7 +21,8 @@ public static class ATextBackupReader
     // the user confirmed a group without it still matches in lowercase (case is a global aText setting).
     private static readonly HashSet<string> GroupKeys = ["99", "0", "2", "6", "8", "12", "13", "14"];
 
-    // Snippet keys: 0 = id, 1 = [name], 3 = "t" plain / "h" rich, 4 = content, 13 = timestamp (ignored).
+    // Snippet keys: 0 = id, 1 = [abbreviations] (also the menu label), 3 = "t" plain / "h" rich, 4 = content,
+    // 13 = timestamp (ignored).
     private static readonly HashSet<string> SnippetKeys = ["0", "1", "3", "4", "13"];
 
     private static readonly JsonDocumentOptions JsonOptions = new() { MaxDepth = 64 };
@@ -127,9 +128,14 @@ public static class ATextBackupReader
         ReportUnknownKeys(item, id, SnippetKeys, issues);
 
         var content = String(item, "4");
-        var name = item.TryGetProperty("1", out var names) && names.ValueKind == JsonValueKind.Array
-            ? names.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String).Select(n => n.GetString()).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
-            : null;
+        string[] abbreviations = item.TryGetProperty("1", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray()
+                .Where(n => n.ValueKind == JsonValueKind.String)
+                .Select(n => n.GetString()!.Trim())
+                .Where(n => n.Length > 0)
+                .ToArray()
+            : [];
+        var name = abbreviations.FirstOrDefault();
         if (name is null)
         {
             name = Preview(content);
@@ -142,7 +148,7 @@ public static class ATextBackupReader
             issues.Add(new ImportIssue(ImportIssueCode.RichTextImportedAsPlain, id, $"'{name}' was rich text; formatting is dropped."));
         }
 
-        return new ImportedSnippet(id, name, content ?? string.Empty, isRichText);
+        return new ImportedSnippet(id, name, content ?? string.Empty, isRichText, abbreviations);
     }
 
     private static string Preview(string? content)

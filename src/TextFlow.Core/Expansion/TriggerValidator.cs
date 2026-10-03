@@ -45,7 +45,8 @@ public static class TriggerValidator
             issues.Add(new TriggerIssue(TriggerIssueCode.TooShort, TriggerIssueSeverity.Error));
         }
 
-        if (trigger.Any(c => char.IsWhiteSpace(c) || options.Delimiters.Contains(c)))
+        // Immediate triggers may contain spaces ("Foto valida", as in aText); AfterDelimiter ones cannot.
+        if (candidate.Mode == TriggerMode.AfterDelimiter && trigger.Any(c => char.IsWhiteSpace(c) || options.Delimiters.Contains(c)))
         {
             issues.Add(new TriggerIssue(TriggerIssueCode.ContainsDelimiter, TriggerIssueSeverity.Error));
         }
@@ -74,7 +75,7 @@ public static class TriggerValidator
         return issues;
     }
 
-    /// <summary>An immediate trigger fires before a longer trigger that starts with it can be completed.</summary>
+    /// <summary>An immediate trigger that starts a longer one must wait (pending) before firing: slower, worth a warning.</summary>
     private static bool ShadowsByPrefix(TriggerDefinition shorter, TriggerDefinition longer, StringComparison comparison) =>
         shorter.Mode == TriggerMode.Immediate
         && longer.Trigger.Length > shorter.Trigger.Length

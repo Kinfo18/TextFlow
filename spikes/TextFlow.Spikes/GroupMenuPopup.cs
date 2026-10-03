@@ -125,6 +125,13 @@ internal sealed class GroupMenuPopup : Form
         }
     }
 
+    public void Cancel()
+    {
+        _state = null;
+        Hide();
+        VisibleBounds = Rectangle.Empty;
+    }
+
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == WmMouseActivate)

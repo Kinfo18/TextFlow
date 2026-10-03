@@ -1,0 +1,13 @@
+id	reference
+01	El rider indica que el local está cerrado y el pedido no está confirmado.
+02	Solicito al rider dirigirse al pickup y esperar diez minutos.
+03	La orden lleva más de veinte minutos demorada en el restaurante.
+04	El cliente no responde, realizo dos llamadas sin éxito y dejo una nota.
+05	Por favor, envíame el código de entrega para completar el dropoff.
+06	Reasigno la orden porque la distancia al local es mayor a tres kilómetros.
+07	Hoy tenemos una reunión a las cuatro y media para revisar el dashboard.
+08	Necesito que actualices el ticket en Jira y lo marques como resuelto.
+09	El pago con tarjeta fue rechazado, así que el cliente pagará en efectivo.
+10	Gracias por tu paciencia, ya escalé el caso al equipo de soporte.
+11	¿Puedes confirmar si el producto faltante era una bebida o un postre?
+12	Envío la solución por el chat y cierro el caso con la etiqueta correcta.

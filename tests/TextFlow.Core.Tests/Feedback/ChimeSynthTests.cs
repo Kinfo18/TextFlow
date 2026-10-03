@@ -24,13 +24,26 @@ public class ChimeSynthTests
         Assert.Equal(Wav.Length - 44, BinaryPrimitives.ReadInt32LittleEndian(Wav.AsSpan(40)));
     }
 
+    private static short[] Samples(byte[] wav) => Enumerable.Range(0, (wav.Length - 44) / 2)
+        .Select(i => BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (i * 2))))
+        .ToArray();
+
     [Fact]
-    public void Chime_IsShort()
+    public void Chime_IsShort_IncludingLeadIn()
     {
         var sampleRate = BinaryPrimitives.ReadInt32LittleEndian(Wav.AsSpan(24));
         var duration = TimeSpan.FromSeconds((Wav.Length - 44) / 2.0 / sampleRate);
 
-        Assert.InRange(duration.TotalMilliseconds, 60, 150);
+        Assert.InRange(duration.TotalMilliseconds, 180, 260);
+    }
+
+    [Fact]
+    public void Chime_StartsWithFaintNonSilentLeadIn_SoIdleAudioDevicesWakeBeforeTheNotes()
+    {
+        var leadIn = Samples(Wav).Take((int)(44_100 * ChimeSynth.LeadIn.TotalSeconds)).ToArray();
+
+        Assert.Contains(leadIn, s => s != 0);                     // not digital silence: some drivers skip it
+        Assert.All(leadIn, s => Assert.InRange(s, -8, 8));         // inaudible (≈ -72 dBFS)
     }
 
     [Fact]

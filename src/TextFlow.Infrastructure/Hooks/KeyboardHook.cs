@@ -21,6 +21,13 @@ public sealed record TriggerTyped(TriggerMatch Match, nint ForegroundWindow) : H
 
 public sealed record ForegroundChanged(nint Window) : HookEvent;
 
+/// <summary>
+/// An ambiguous trigger ("cp" while "cp1" exists) is waiting. A menu trigger can open its menu right away:
+/// in <see cref="KeyboardHook.MenuMode"/> a key that continues a longer trigger still fires it. Otherwise call
+/// <see cref="KeyboardHook.FlushPendingAsync"/> after a timeout.
+/// </summary>
+public sealed record TriggerPending(TriggerMatch Match, int Version, nint ForegroundWindow) : HookEvent;
+
 /// <summary>Menu mode only: a navigation key was swallowed and belongs to the open menu.</summary>
 public sealed record MenuKeyPressed(MenuInput Input) : HookEvent;
 
@@ -104,9 +111,21 @@ public sealed unsafe class KeyboardHook : IDisposable
         set
         {
             _menuMode = value;
-            _thread.InvokeAsync(ResetState);
+            if (!value)
+            {
+                _thread.InvokeAsync(ResetState); // opening keeps the pending trigger so "cp" + '1' still reaches "cp1"
+            }
         }
     }
+
+    /// <summary>Fires the pending trigger (as <see cref="TriggerTyped"/>) if nothing was typed since <paramref name="version"/>.</summary>
+    public Task FlushPendingAsync(int version) => _thread.InvokeAsync(() =>
+    {
+        if (_matcher.FlushPending(version) is { } match)
+        {
+            _events.Writer.TryWrite(new TriggerTyped(match, (nint)PInvoke.GetForegroundWindow().Value));
+        }
+    });
 
     public Task ReplaceTriggersAsync(IEnumerable<TriggerDefinition> triggers) =>
         _thread.InvokeAsync(() => _matcher.ReplaceTriggers(triggers));
@@ -187,7 +206,7 @@ public sealed unsafe class KeyboardHook : IDisposable
 
             Interlocked.Increment(ref _keyEvents);
             return _menuMode
-                ? ProcessMenuKey((VIRTUAL_KEY)key->vkCode)
+                ? ProcessMenuKey((VIRTUAL_KEY)key->vkCode, key->scanCode)
                 : ProcessKeyDown((VIRTUAL_KEY)key->vkCode, key->scanCode);
         }
         finally
@@ -200,7 +219,7 @@ public sealed unsafe class KeyboardHook : IDisposable
         }
     }
 
-    private bool ProcessMenuKey(VIRTUAL_KEY vk)
+    private bool ProcessMenuKey(VIRTUAL_KEY vk, uint scanCode)
     {
         if (IsModifier(vk))
         {
@@ -208,6 +227,11 @@ public sealed unsafe class KeyboardHook : IDisposable
         }
 
         var shortcut = IsDown(VIRTUAL_KEY.VK_CONTROL) || IsDown(VIRTUAL_KEY.VK_MENU) || IsDown(VIRTUAL_KEY.VK_LWIN) || IsDown(VIRTUAL_KEY.VK_RWIN);
+        if (!shortcut && _matcher.HasPending && ContinuePendingFromMenu(vk, scanCode))
+        {
+            return false; // the key belongs to a longer trigger ("cp" menu open, user types '1' for "cp1"): let it through
+        }
+
         if (!shortcut && ToMenuInput(vk) is { } input)
         {
             _events.Writer.TryWrite(new MenuKeyPressed(input));
@@ -216,6 +240,32 @@ public sealed unsafe class KeyboardHook : IDisposable
 
         _events.Writer.TryWrite(new MenuInterrupted());
         return false;
+    }
+
+    private bool ContinuePendingFromMenu(VIRTUAL_KEY vk, uint scanCode)
+    {
+        if (IsNavigation(vk) || vk is VIRTUAL_KEY.VK_RETURN or VIRTUAL_KEY.VK_BACK)
+        {
+            return false;
+        }
+
+        var text = Translate(vk, scanCode, altGr: false);
+        if (text.Length != 1 || !_matcher.ContinuesPending(text[0]))
+        {
+            return false;
+        }
+
+        var version = _matcher.PendingVersion;
+        if (_matcher.OnCharacter(text[0]) is { } match)
+        {
+            _events.Writer.TryWrite(new TriggerTyped(match, (nint)PInvoke.GetForegroundWindow().Value));
+        }
+        else if (_matcher.PendingMatch is { } pending && _matcher.PendingVersion != version)
+        {
+            _events.Writer.TryWrite(new TriggerPending(pending, _matcher.PendingVersion, (nint)PInvoke.GetForegroundWindow().Value));
+        }
+
+        return true;
     }
 
     private static MenuInput? ToMenuInput(VIRTUAL_KEY vk) => vk switch
@@ -257,6 +307,7 @@ public sealed unsafe class KeyboardHook : IDisposable
 
         var text = Translate(vk, scanCode, altGr);
         var swallow = false;
+        var pendingBefore = _matcher.PendingVersion;
         foreach (var c in text)
         {
             var match = _matcher.OnCharacter(c);
@@ -265,9 +316,15 @@ public sealed unsafe class KeyboardHook : IDisposable
                 _events.Writer.TryWrite(new TriggerTyped(match, (nint)PInvoke.GetForegroundWindow().Value));
 
                 // Immediate triggers let their last key through: swallowing it could strand a pending
-                // dead key in the target, and the backspace count already covers it.
+                // dead key in the target, and the backspace count already covers it. A Delimiter is set for
+                // AfterDelimiter triggers and for a pending trigger broken by the next key: that key is swallowed.
                 swallow |= match.Delimiter is not null;
             }
+        }
+
+        if (_matcher.PendingMatch is { } pending && _matcher.PendingVersion != pendingBefore)
+        {
+            _events.Writer.TryWrite(new TriggerPending(pending, _matcher.PendingVersion, (nint)PInvoke.GetForegroundWindow().Value));
         }
 
         return swallow;

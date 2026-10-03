@@ -184,11 +184,12 @@ public class TriggerMatcherTests
     }
 
     [Fact]
-    public void ImmediateTrigger_ShorterPrefixFiresFirst()
+    public void ImmediateTrigger_ThatPrefixesAnother_WaitsInsteadOfShadowingIt()
     {
         var matcher = Immediate("OD", "ODX");
 
-        Assert.Equal("i0", Type(matcher, "OD")?.SnippetId);
+        Assert.Null(Type(matcher, "OD"));
+        Assert.Equal("i1", matcher.OnCharacter('X')?.SnippetId);
     }
 
     [Fact]
@@ -250,5 +251,194 @@ public class TriggerMatcherTests
 
         Assert.Equal("exact", Type(matcher, "LC")?.SnippetId);
         Assert.Equal("loose", Type(matcher, " lc")?.SnippetId);
+    }
+
+    private static TriggerMatcher Ambiguous() => new(
+        [
+            new TriggerDefinition("menu-dir", "DIR", IgnoreCase: true),
+            new TriggerDefinition("dir1", "dir1", IgnoreCase: true),
+            new TriggerDefinition("dir12", "dir12", IgnoreCase: true),
+        ],
+        Defaults);
+
+    [Fact]
+    public void AmbiguousTrigger_IsHeldPending_InsteadOfFiring()
+    {
+        var matcher = Ambiguous();
+
+        Assert.Null(Type(matcher, "dir"));
+        Assert.True(matcher.HasPending);
+    }
+
+    [Fact]
+    public void AmbiguousTrigger_LongerTriggerCompleted_FiresLonger()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        Assert.Null(matcher.OnCharacter('1')); // "dir1" is itself a prefix of "dir12": still pending
+        var match = matcher.OnCharacter('2');
+
+        Assert.Equal("dir12", match?.SnippetId);
+        Assert.Equal(5, match?.Backspaces);
+        Assert.False(matcher.HasPending);
+    }
+
+    [Fact]
+    public void AmbiguousTrigger_BrokenByOtherCharacter_FiresPending_WithThatCharacterAsSwallowedDelimiter()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        var match = matcher.OnCharacter('x');
+
+        Assert.Equal("menu-dir", match?.SnippetId);
+        Assert.Equal('x', match?.Delimiter);
+        Assert.Equal(3, match?.Backspaces);
+    }
+
+    [Fact]
+    public void AmbiguousTrigger_BrokenByDelimiter_FiresPending()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir1");
+
+        var match = matcher.OnCharacter(' ');
+
+        Assert.Equal("dir1", match?.SnippetId);
+        Assert.Equal(' ', match?.Delimiter);
+    }
+
+    [Fact]
+    public void FlushPending_FiresHeldTrigger_AfterTimeout()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        var match = matcher.FlushPending(matcher.PendingVersion);
+
+        Assert.Equal("menu-dir", match?.SnippetId);
+        Assert.Null(match?.Delimiter);
+        Assert.Equal(3, match?.Backspaces);
+        Assert.False(matcher.HasPending);
+    }
+
+    [Fact]
+    public void FlushPending_WithStaleVersion_DoesNothing()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+        var stale = matcher.PendingVersion;
+        matcher.OnCharacter('1');
+
+        Assert.Null(matcher.FlushPending(stale));
+        Assert.True(matcher.HasPending);
+    }
+
+    [Fact]
+    public void Backspace_CancelsPending()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        matcher.OnBackspace();
+
+        Assert.False(matcher.HasPending);
+        Assert.Null(matcher.FlushPending(matcher.PendingVersion));
+    }
+
+    [Fact]
+    public void Reset_CancelsPending()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        matcher.Reset();
+
+        Assert.False(matcher.HasPending);
+    }
+
+    [Fact]
+    public void UnambiguousTrigger_StillFiresImmediately()
+    {
+        var matcher = new TriggerMatcher([new TriggerDefinition("cc", "cc"), new TriggerDefinition("s1", "s1")], Defaults);
+
+        Assert.Equal("cc", Type(matcher, "cc")?.SnippetId);
+        Assert.False(matcher.HasPending);
+    }
+
+    [Fact]
+    public void PrefixOfLongerTrigger_WithoutOwnMatch_IsNotPending()
+    {
+        var matcher = new TriggerMatcher([new TriggerDefinition("orca3", "orca3")], Defaults);
+
+        Assert.Null(Type(matcher, "orca"));
+        Assert.False(matcher.HasPending);
+        Assert.Equal("orca3", matcher.OnCharacter('3')?.SnippetId);
+    }
+
+    [Fact]
+    public void ImmediateTriggerWithSpaces_Matches()
+    {
+        var matcher = new TriggerMatcher([new TriggerDefinition("foto", "Foto valida", IgnoreCase: true)], Defaults);
+
+        var match = Type(matcher, "foto valida");
+
+        Assert.Equal("foto", match?.SnippetId);
+        Assert.Equal("Foto valida".Length, match?.Backspaces);
+    }
+
+    [Fact]
+    public void SpaceInsideLongerTrigger_KeepsPendingAlive()
+    {
+        var matcher = new TriggerMatcher(
+            [new TriggerDefinition("short", "foto"), new TriggerDefinition("long", "foto valida")],
+            Defaults);
+
+        Assert.Null(Type(matcher, "foto "));
+        Assert.True(matcher.HasPending);
+        Assert.Equal("long", Type(matcher, "valida")?.SnippetId);
+    }
+
+    [Fact]
+    public void SpaceBreakingPending_FiresHeldTrigger()
+    {
+        var matcher = new TriggerMatcher(
+            [new TriggerDefinition("short", "foto"), new TriggerDefinition("long", "foto valida")],
+            Defaults);
+
+        var match = Type(matcher, "foto x");
+
+        Assert.Null(match); // "foto " is still a prefix; 'x' breaks it after the space was already typed
+        Assert.False(matcher.HasPending);
+    }
+
+    [Fact]
+    public void AfterDelimiterTriggerWithDelimiter_IsStillRejected()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new TriggerMatcher([new TriggerDefinition("x", "a b", TriggerMode.AfterDelimiter)], Defaults));
+    }
+
+    [Fact]
+    public void PendingMatch_DescribesHeldTrigger()
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        Assert.Equal("menu-dir", matcher.PendingMatch?.SnippetId);
+        Assert.Equal(3, matcher.PendingMatch?.Backspaces);
+    }
+
+    [Theory]
+    [InlineData('1', true)]
+    [InlineData('x', false)]
+    [InlineData('2', false)]
+    public void ContinuesPending_TellsWhetherCharacterExtendsTowardsLongerTrigger(char c, bool expected)
+    {
+        var matcher = Ambiguous();
+        Type(matcher, "dir");
+
+        Assert.Equal(expected, matcher.ContinuesPending(c));
     }
 }

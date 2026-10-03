@@ -6,8 +6,15 @@ namespace TextFlow.Core.Feedback;
 /// Synthesizes TextFlow's own expansion chime (no bundled or third-party audio): two short rising
 /// notes with a soft attack and exponential decay, as a 16-bit mono PCM WAV.
 /// </summary>
+/// <remarks>
+/// The notes are preceded by <see cref="LeadIn"/> of inaudible noise: laptop audio endpoints power down when
+/// idle and swallow the first ~100 ms on wake-up, which made the 95 ms chime play only sometimes.
+/// </remarks>
 public static class ChimeSynth
 {
+    public static readonly TimeSpan LeadIn = TimeSpan.FromMilliseconds(120);
+
+    private const int LeadInAmplitude = 6;
     private const int SampleRate = 44_100;
     private const int HeaderBytes = 44;
     private const double Peak = 0.22; // ≈ -13 dBFS: audible but discreet
@@ -23,7 +30,9 @@ public static class ChimeSynth
     public static byte[] CreateExpansionChime(double volume = 1.0)
     {
         var level = Math.Clamp(volume, 0, 1);
-        var samples = Notes.SelectMany(note => Tone(note.Frequency, note.Seconds, note.Gain * level)).ToArray();
+        var samples = (level > 0 ? WakeUpNoise() : Enumerable.Repeat((short)0, (int)(LeadIn.TotalSeconds * SampleRate)))
+            .Concat(Notes.SelectMany(note => Tone(note.Frequency, note.Seconds, note.Gain * level)))
+            .ToArray();
         var wav = new byte[HeaderBytes + (samples.Length * 2)];
         WriteHeader(wav, samples.Length * 2);
 
@@ -33,6 +42,20 @@ public static class ChimeSynth
         }
 
         return wav;
+    }
+
+    /// <summary>Deterministic ±6 LSB noise (≈ -72 dBFS): keeps the endpoint from treating it as silence.</summary>
+    private static IEnumerable<short> WakeUpNoise()
+    {
+        var count = (int)(LeadIn.TotalSeconds * SampleRate);
+        var state = 0x2545F491u;
+        for (var i = 0; i < count; i++)
+        {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            yield return (short)((int)(state % ((LeadInAmplitude * 2) + 1)) - LeadInAmplitude);
+        }
     }
 
     private static IEnumerable<short> Tone(double frequency, double seconds, double gain)

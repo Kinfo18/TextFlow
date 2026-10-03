@@ -12,3 +12,7 @@ models/
 
 # Personal snippet backups (private data) never go into git
 *.atext
+
+# Python bytecode
+__pycache__/
+*.pyc

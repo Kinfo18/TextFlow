@@ -42,9 +42,18 @@ public class TriggerValidatorTests
     }
 
     [Fact]
-    public void TriggerContainingDelimiter_IsError()
+    public void AfterDelimiterTriggerContainingDelimiter_IsError()
     {
-        Assert.Contains(Validate(";mi firma"), i => i.Code == TriggerIssueCode.ContainsDelimiter);
+        var issues = TriggerValidator.Validate(
+            new TriggerDefinition("candidate", ";mi firma", TriggerMode.AfterDelimiter), [], TriggerOptions.Default);
+
+        Assert.Contains(issues, i => i.Code == TriggerIssueCode.ContainsDelimiter);
+    }
+
+    [Fact]
+    public void ImmediateTriggerWithSpaces_IsAllowed_AsInAText()
+    {
+        Assert.DoesNotContain(Validate("Foto valida"), i => i.Code == TriggerIssueCode.ContainsDelimiter);
     }
 
     [Fact]
