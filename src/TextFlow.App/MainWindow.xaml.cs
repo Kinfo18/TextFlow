@@ -21,6 +21,9 @@ public sealed partial class MainWindow : Window
         ["diagnostics"] = () => new DiagnosticsPage(),
     };
 
+    private const int MinimumWidth = 900;
+    private const int MinimumHeight = 560;
+
     private string? _current;
 
     public MainWindow()
@@ -29,6 +32,14 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
         AppWindow.Resize(new SizeInt32(1100, 720));
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            // Below this the three Snippets panes cannot all fit (tree, list and editor minimums plus margins).
+            // The presenter works in physical pixels: scale the logical minimum (125 % on the dev laptop).
+            var scale = Menu.PopupInterop.DpiScale(WinRT.Interop.WindowNative.GetWindowHandle(this));
+            presenter.PreferredMinimumWidth = (int)Math.Ceiling(MinimumWidth * scale);
+            presenter.PreferredMinimumHeight = (int)Math.Ceiling(MinimumHeight * scale);
+        }
         ApplyTheme(App.Current.Theme);
         Navigate("home");
     }

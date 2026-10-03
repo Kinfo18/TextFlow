@@ -36,7 +36,7 @@
             Grid.Row="1"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
-            PaneDisplayMode="Left"
+            PaneDisplayMode="Auto"
             OpenPaneLength="220"
             SelectionChanged="OnNavigationSelectionChanged">
             <NavigationView.MenuItems>

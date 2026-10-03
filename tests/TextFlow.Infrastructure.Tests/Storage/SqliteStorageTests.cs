@@ -120,6 +120,29 @@ public sealed class SqliteStorageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ReorderGroups_StoresTheNewOrderAmongSiblings()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await library.ReorderGroupsAsync("root", ["g-t", "g-lc"], CancellationToken.None);
+
+        Assert.Equal(["g-t", "g-lc"], (await library.LoadAsync(CancellationToken.None)).Groups.Select(g => g.Id));
+    }
+
+    [Fact]
+    public async Task ReorderGroups_RejectsGroupsThatAreNotChildrenOfTheParent()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            library.ReorderGroupsAsync("root", ["g-t", "g-sub"], CancellationToken.None));
+
+        Assert.Equal(["g-lc", "g-t"], (await library.LoadAsync(CancellationToken.None)).Groups.Select(g => g.Id));
+    }
+
+    [Fact]
     public async Task SaveSnippet_IntoAMissingGroup_Fails()
     {
         await Assert.ThrowsAsync<SqliteException>(() =>

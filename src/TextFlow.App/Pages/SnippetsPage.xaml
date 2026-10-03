@@ -7,9 +7,10 @@
 
     <Grid Padding="24,16,24,16" ColumnSpacing="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280" />
-            <ColumnDefinition Width="340" />
-            <ColumnDefinition Width="*" MinWidth="280" />
+            <!-- Proportional so the editor never falls off a narrow window (MainWindow enforces a minimum width). -->
+            <ColumnDefinition Width="2*" MinWidth="200" />
+            <ColumnDefinition Width="2.4*" MinWidth="240" />
+            <ColumnDefinition Width="4*" MinWidth="300" />
         </Grid.ColumnDefinitions>
 
         <!-- Groups -->
@@ -33,30 +34,91 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <StackPanel Padding="4,6,4,0">
-                <TextBlock x:Name="ListTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="ListSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" />
-            </StackPanel>
+            <Grid Padding="4,6,4,0" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock x:Name="ListTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="ListSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button x:Name="NewSnippetButton" Grid.Column="1" VerticalAlignment="Center" Click="OnNewSnippet" ToolTipService.ToolTip="Nuevo comando en este grupo">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE710;" FontSize="12" />
+                        <TextBlock Text="Nuevo" />
+                    </StackPanel>
+                </Button>
+            </Grid>
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
                 <ListView x:Name="SnippetList" SelectionMode="Single" SelectionChanged="OnSnippetSelected" />
             </Border>
         </Grid>
 
-        <!-- Details (editor in H3.3) -->
+        <!-- Editor (H3.3) -->
         <Border Grid.Column="2" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="20">
-            <ScrollViewer>
-                <StackPanel x:Name="Details" Spacing="10">
-                    <TextBlock x:Name="DetailTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
-                    <TextBlock x:Name="DetailPath" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
-                    <StackPanel x:Name="DetailAbbreviations" Orientation="Horizontal" Spacing="6" />
-                    <TextBlock x:Name="DetailFlags" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.75" />
-                    <Border CornerRadius="6" Padding="12" Background="{ThemeResource SubtleFillColorSecondaryBrush}">
-                        <TextBlock x:Name="DetailContent" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="Segoe UI" />
-                    </Border>
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel x:Name="EmptyState" Padding="20" Spacing="6">
+                    <TextBlock Text="Elige un comando" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Selecciona un grupo a la izquierda o busca por abreviatura, nombre o texto. Con «Nuevo» creas un comando en el grupo elegido."
+                               TextWrapping="Wrap" Opacity="0.7" />
                 </StackPanel>
-            </ScrollViewer>
+
+                <ScrollViewer x:Name="EditorScroll" Visibility="Collapsed" Padding="20,16,20,8">
+                    <StackPanel Spacing="14">
+                        <StackPanel>
+                            <TextBlock x:Name="DetailTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="DetailPath" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBox x:Name="AbbreviationsBox" Header="Abreviaturas (una por línea)" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="60" TextChanged="OnEdited" />
+                        <TextBox x:Name="NameBox" Header="Nombre en el menú" PlaceholderText="Si lo dejas vacío, se usa la primera abreviatura"
+                                 TextChanged="OnEdited" />
+                        <TextBox x:Name="ContentBox" Header="Texto que se inserta" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="180" MaxHeight="420" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 PlaceholderText="Vacío = nota informativa que solo se ve en el menú" TextChanged="OnEdited" />
+                        <RadioButtons x:Name="ModeChoice" Header="Se expande" MaxColumns="2" SelectionChanged="OnModeChanged">
+                            <x:String>Al escribir la abreviatura</x:String>
+                            <x:String>Tras un espacio o signo</x:String>
+                        </RadioButtons>
+                        <ToggleSwitch x:Name="EnabledSwitch" Header="Activo" OnContent="Se expande" OffContent="Desactivado (sigue en el menú)"
+                                      Toggled="OnEnabledToggled" />
+                        <TextBlock x:Name="DetailFlags" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Grid x:Name="EditorActions" Grid.Row="1" Visibility="Collapsed" Padding="20,10,20,16" ColumnSpacing="8"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="SaveButton" Style="{StaticResource AccentButtonStyle}" Click="OnSave" IsEnabled="False">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="S" />
+                        </Button.KeyboardAccelerators>
+                        Guardar
+                    </Button>
+                    <Button x:Name="DiscardButton" Grid.Column="1" Click="OnDiscard" IsEnabled="False">Descartar</Button>
+                    <TextBlock x:Name="EditorMessage" Grid.Column="2" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}" Margin="8,0,8,0" />
+                    <Button x:Name="DeleteButton" Grid.Column="3" Click="OnDelete">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE74D;" FontSize="12" />
+                            <TextBlock Text="Eliminar" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Grid>
         </Border>
     </Grid>
 </Page>

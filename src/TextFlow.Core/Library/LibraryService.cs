@@ -34,6 +34,9 @@ public sealed class LibraryService : IDisposable
 
     public Task DeleteGroupAsync(string groupId, CancellationToken ct) => WriteAsync(r => r.DeleteGroupAsync(groupId, ct), ct);
 
+    public Task ReorderGroupsAsync(string parentId, IReadOnlyList<string> childIds, CancellationToken ct) =>
+        WriteAsync(r => r.ReorderGroupsAsync(parentId, childIds, ct), ct);
+
     public Task SaveSnippetAsync(string groupId, LibrarySnippet snippet, CancellationToken ct) =>
         WriteAsync(r => r.SaveSnippetAsync(groupId, snippet, ct), ct);
 

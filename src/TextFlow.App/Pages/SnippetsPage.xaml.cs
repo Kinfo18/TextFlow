@@ -7,8 +7,9 @@ using TextFlow.Core.Library;
 namespace TextFlow.App.Pages;
 
 /// <summary>
-/// Snippets (H3.2): group tree (drag a group onto another to move it), the selected group's snippets or the search
-/// results, and the snippet's details. Editing the snippet itself arrives in H3.3.
+/// Snippets (H3.2–H3.3): group tree (drag a group onto another to move it), the selected group's commands or the
+/// search results, and the command editor. Unsaved edits survive refreshes (pause, imports) and are never dropped
+/// without asking.
 /// </summary>
 public sealed partial class SnippetsPage : Page, IRefreshable
 {
@@ -17,6 +18,15 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     private readonly Dictionary<TreeViewNode, LibraryGroup> _groups = [];
     private string? _selectedGroupId;
     private string? _selectedSnippetId;
+
+    // Editor state.
+    private SnippetDraft? _draft;
+    private string? _draftGroupId;
+    private string _lineEnding = "\n";
+    private bool _isNew;
+    private bool _dirty;
+    private bool _loadingEditor;
+    private bool _revertingSelection;
 
     public SnippetsPage()
     {
@@ -27,17 +37,15 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     private static LibraryGroup Library =>
         App.Current.Library?.Service.Current ?? new LibraryGroup("root", "Biblioteca", null, true, [], []);
 
-    /// <summary>Rebuilds from the stored library (after imports and edits), keeping expansion and selection.</summary>
+    /// <summary>Rebuilds from the stored library (after imports and edits), keeping expansion, selection and unsaved edits.</summary>
     public void Refresh()
     {
         var expanded = _groups.Where(pair => pair.Key.IsExpanded).Select(pair => pair.Value.Id).ToHashSet(StringComparer.Ordinal);
         GroupTree.RootNodes.Clear();
         _groups.Clear();
 
-        var root = Library;
-        var rootNode = Node(root, expanded, isRoot: true);
+        var rootNode = Node(Library, expanded, isRoot: true);
         GroupTree.RootNodes.Add(rootNode);
-
         var selected = _groups.FirstOrDefault(pair => pair.Value.Id == _selectedGroupId).Key ?? rootNode;
         GroupTree.SelectedNode = selected;
 
@@ -53,7 +61,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
     private TreeViewNode Node(LibraryGroup group, HashSet<string> expanded, bool isRoot = false)
     {
-        var label = isRoot ? $"{group.Name}" : group.Abbreviation is { } abbreviation ? $"{group.Name}   ·  {abbreviation}" : group.Name;
+        var label = isRoot ? group.Name : group.Abbreviation is { } abbreviation ? $"{group.Name}   ·  {abbreviation}" : group.Name;
         var node = new TreeViewNode { Content = label, IsExpanded = isRoot || expanded.Contains(group.Id) };
         _groups[node] = group;
         foreach (var child in group.Groups)
@@ -91,6 +99,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         ListTitle.Text = group.Name;
         var count = group.Snippets.Count == 1 ? "1 comando" : $"{group.Snippets.Count} comandos";
         ListSubtitle.Text = group.Abbreviation is { } abbreviation ? $"{count} · se abre con {abbreviation}" : count;
+        NewSnippetButton.IsEnabled = true;
         Fill(group.Snippets.Select(s => (s, group.Id, (string?)null)));
     }
 
@@ -104,28 +113,47 @@ public sealed partial class SnippetsPage : Page, IRefreshable
             1 => "1 comando",
             _ => $"{hits.Count} comandos",
         };
+        NewSnippetButton.IsEnabled = false; // a new command needs a group: pick one in the tree
         Fill(hits.Select(h => (h.Snippet, h.GroupId, (string?)string.Join(" › ", h.GroupPath))));
     }
 
     private void Fill(IEnumerable<(LibrarySnippet Snippet, string GroupId, string? Path)> rows)
     {
-        SnippetList.Items.Clear();
-        ListViewItem? reselect = null;
-        foreach (var (snippet, groupId, path) in rows)
+        _revertingSelection = true; // rebuilding the list is not a user selection
+        try
         {
-            var item = Row(snippet, path);
-            item.Tag = (snippet, groupId, path);
-            SnippetList.Items.Add(item);
-            if (snippet.Id == _selectedSnippetId)
+            SnippetList.Items.Clear();
+            ListViewItem? reselect = null;
+            foreach (var (snippet, groupId, path) in rows)
             {
-                reselect = item;
+                var item = Row(snippet, path);
+                item.Tag = (snippet, groupId, path);
+                SnippetList.Items.Add(item);
+                if (snippet.Id == _selectedSnippetId)
+                {
+                    reselect = item;
+                }
             }
+
+            SnippetList.SelectedItem = reselect;
+        }
+        finally
+        {
+            _revertingSelection = false;
         }
 
-        SnippetList.SelectedItem = reselect;
-        if (reselect is null)
+        if (_dirty)
         {
-            ShowDetails(null);
+            return; // never overwrite unsaved edits
+        }
+
+        if (SnippetList.SelectedItem is ListViewItem { Tag: ValueTuple<LibrarySnippet, string, string?> row })
+        {
+            LoadEditor(SnippetDraft.From(row.Item1), row.Item2, row.Item3, isNew: false);
+        }
+        else
+        {
+            ShowEmptyEditor();
         }
     }
 
@@ -133,18 +161,12 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     {
         var abbreviation = new TextBlock
         {
-            Text = snippet.Abbreviations.Count > 0 ? snippet.Abbreviations[0] : string.Empty,
+            Text = snippet.Abbreviations.Count > 0 ? snippet.Abbreviations[0] : snippet.Name,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        var secondLine = new TextBlock
-        {
-            Text = path ?? Preview(snippet),
-            Opacity = 0.65,
-            FontSize = 12,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+        var secondLine = new TextBlock { Text = path ?? Preview(snippet), Opacity = 0.65, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         var stack = new StackPanel { Padding = new Thickness(4, 6, 4, 6), Opacity = snippet.Enabled ? 1 : 0.5 };
         stack.Children.Add(abbreviation);
         stack.Children.Add(secondLine);
@@ -162,59 +184,273 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         return oneLine.Length <= PreviewLength ? oneLine : string.Concat(oneLine.AsSpan(0, PreviewLength), "…");
     }
 
-    private void OnSnippetSelected(object sender, SelectionChangedEventArgs e)
+    /// <remarks>async void: every failure is caught; an escaping exception freezes WinUI.</remarks>
+    private async void OnSnippetSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (SnippetList.SelectedItem is ListViewItem { Tag: ValueTuple<LibrarySnippet, string, string?> row })
+        if (_revertingSelection || SnippetList.SelectedItem is not ListViewItem { Tag: ValueTuple<LibrarySnippet, string, string?> row })
         {
-            _selectedSnippetId = row.Item1.Id;
-            ShowDetails(row);
-        }
-    }
-
-    private void ShowDetails((LibrarySnippet Snippet, string GroupId, string? Path)? row)
-    {
-        DetailAbbreviations.Children.Clear();
-        if (row is not { } selected)
-        {
-            DetailTitle.Text = "Elige un comando";
-            DetailPath.Text = "Selecciona un grupo a la izquierda o busca por abreviatura, nombre o texto.";
-            DetailFlags.Text = string.Empty;
-            DetailContent.Text = string.Empty;
             return;
         }
 
-        var snippet = selected.Snippet;
-        DetailTitle.Text = snippet.Name;
-        DetailPath.Text = selected.Path ?? GroupPathOf(selected.GroupId);
-        foreach (var abbreviation in snippet.Abbreviations)
+        try
         {
-            DetailAbbreviations.Children.Add(new Border
+            if (row.Item1.Id != _draft?.Id && !await ConfirmLeaveAsync())
             {
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(8, 2, 8, 2),
-                Background = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"],
-                Child = new TextBlock
-                {
-                    Text = abbreviation,
-                    Foreground = (Brush)Application.Current.Resources["TextOnAccentFillColorPrimaryBrush"],
-                    FontWeight = FontWeights.SemiBold,
-                },
-            });
-        }
+                ReselectCurrent();
+                return;
+            }
 
-        var flags = new List<string> { snippet.Mode == SnippetMode.AfterDelimiter ? "Se expande tras un espacio o signo" : "Se expande al escribirla" };
-        if (!snippet.Enabled)
+            _selectedSnippetId = row.Item1.Id;
+            LoadEditor(SnippetDraft.From(row.Item1), row.Item2, row.Item3, isNew: false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
         {
-            flags.Add("desactivado");
+            Fail(ex);
         }
+    }
 
-        if (snippet.IsRichText)
+    private async void OnNewSnippet(object sender, RoutedEventArgs e)
+    {
+        try
         {
-            flags.Add("tenía formato en aText (se inserta como texto)");
+            if (!await ConfirmLeaveAsync())
+            {
+                return;
+            }
+
+            var groupId = GroupTree.SelectedNode is { } node && _groups.TryGetValue(node, out var group) ? group.Id : Library.Id;
+            _selectedSnippetId = null;
+            SnippetList.SelectedItem = null;
+            LoadEditor(SnippetDraft.New(), groupId, GroupPathOf(groupId), isNew: true);
+            MarkDirty();
+            AbbreviationsBox.Focus(FocusState.Programmatic);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Fail(ex);
+        }
+    }
+
+    private void LoadEditor(SnippetDraft draft, string groupId, string? path, bool isNew)
+    {
+        _loadingEditor = true;
+        try
+        {
+            _draft = draft;
+            _draftGroupId = groupId;
+            _isNew = isNew;
+            _lineEnding = draft.Content.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+            DetailTitle.Text = isNew ? "Nuevo comando" : draft.Name;
+            DetailPath.Text = path ?? GroupPathOf(groupId);
+            AbbreviationsBox.Text = draft.AbbreviationsText;
+            NameBox.Text = draft.Name;
+            ContentBox.Text = draft.Content;
+            ModeChoice.SelectedIndex = draft.Mode == SnippetMode.AfterDelimiter ? 1 : 0;
+            EnabledSwitch.IsOn = draft.Enabled;
+            DetailFlags.Text = draft.IsRichText ? "En aText tenía formato; se inserta como texto." : string.Empty;
+            EditorMessage.Text = string.Empty;
+            DeleteButton.IsEnabled = !isNew;
+            EmptyState.Visibility = Visibility.Collapsed;
+            EditorScroll.Visibility = Visibility.Visible;
+            EditorActions.Visibility = Visibility.Visible;
+            SetDirty(false);
+        }
+        finally
+        {
+            _loadingEditor = false;
+        }
+    }
+
+    private void ShowEmptyEditor()
+    {
+        _draft = null;
+        _draftGroupId = null;
+        EmptyState.Visibility = Visibility.Visible;
+        EditorScroll.Visibility = Visibility.Collapsed;
+        EditorActions.Visibility = Visibility.Collapsed;
+        SetDirty(false);
+    }
+
+    private void OnEdited(object sender, TextChangedEventArgs e) => MarkDirty();
+
+    private void OnModeChanged(object sender, SelectionChangedEventArgs e) => MarkDirty();
+
+    private void OnEnabledToggled(object sender, RoutedEventArgs e) => MarkDirty();
+
+    private void MarkDirty()
+    {
+        if (!_loadingEditor && _draft is not null)
+        {
+            SetDirty(true);
+            EditorMessage.Text = string.Empty;
+        }
+    }
+
+    private void SetDirty(bool dirty)
+    {
+        _dirty = dirty;
+        SaveButton.IsEnabled = dirty;
+        DiscardButton.IsEnabled = dirty;
+    }
+
+    /// <summary>The form as a draft; the TextBox's "\r" line breaks go back to the snippet's own style.</summary>
+    private SnippetDraft CurrentDraft() => _draft! with
+    {
+        AbbreviationsText = AbbreviationsBox.Text.Replace('\r', '\n'),
+        Name = NameBox.Text,
+        Content = ContentBox.Text.ReplaceLineEndings(_lineEnding),
+        Mode = ModeChoice.SelectedIndex == 1 ? SnippetMode.AfterDelimiter : SnippetMode.Immediate,
+        Enabled = EnabledSwitch.IsOn,
+    };
+
+    private async void OnSave(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await SaveAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Fail(ex);
+        }
+    }
+
+    /// <returns>False when nothing was saved (invalid form or the user cancelled the first-edit question).</returns>
+    private async Task<bool> SaveAsync()
+    {
+        if (_draft is null || _draftGroupId is not { } groupId)
+        {
+            return false;
         }
 
-        DetailFlags.Text = string.Join(" · ", flags);
-        DetailContent.Text = snippet.IsInfoOnly ? "(Nota informativa: se muestra en el menú y no inserta texto)" : snippet.Content;
+        var (snippet, errors) = CurrentDraft().ToSnippet();
+        if (snippet is null)
+        {
+            EditorMessage.Text = string.Join(" ", errors.Select(Describe));
+            return false;
+        }
+
+        if (!await App.Current.EditLibraryAsync(XamlRoot, service => service.SaveSnippetAsync(groupId, snippet, CancellationToken.None)))
+        {
+            return false;
+        }
+
+        _selectedSnippetId = snippet.Id;
+        SetDirty(false);
+        LoadEditor(SnippetDraft.From(snippet), groupId, DetailPath.Text, isNew: false);
+        Refresh();
+        return true;
+    }
+
+    private void OnDiscard(object sender, RoutedEventArgs e) => Discard();
+
+    private void Discard()
+    {
+        SetDirty(false);
+        if (_isNew || _draft is null)
+        {
+            ShowEmptyEditor();
+        }
+        else
+        {
+            Refresh(); // reloads the stored version
+        }
+    }
+
+    private async void OnDelete(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_draft is not { } draft || _isNew)
+            {
+                return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Eliminar comando",
+                Content = $"Se eliminará «{draft.Name}» con sus abreviaturas. Antes de cada importación se guarda una copia, pero este borrado no.",
+                PrimaryButtonText = "Eliminar",
+                CloseButtonText = "Cancelar",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            if (await App.Current.EditLibraryAsync(XamlRoot, service => service.DeleteSnippetAsync(draft.Id, CancellationToken.None)))
+            {
+                _selectedSnippetId = null;
+                SetDirty(false);
+                ShowEmptyEditor();
+                Refresh();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Fail(ex);
+        }
+    }
+
+    /// <summary>Before leaving a modified command: save, discard or stay.</summary>
+    private async Task<bool> ConfirmLeaveAsync()
+    {
+        if (!_dirty)
+        {
+            return true;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Cambios sin guardar",
+            Content = "Este comando tiene cambios sin guardar.",
+            PrimaryButtonText = "Guardar",
+            SecondaryButtonText = "Descartar",
+            CloseButtonText = "Seguir editando",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        switch (await dialog.ShowAsync())
+        {
+            case ContentDialogResult.Primary:
+                return await SaveAsync();
+            case ContentDialogResult.Secondary:
+                SetDirty(false);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void ReselectCurrent()
+    {
+        _revertingSelection = true;
+        try
+        {
+            SnippetList.SelectedItem = SnippetList.Items.OfType<ListViewItem>()
+                .FirstOrDefault(i => i.Tag is ValueTuple<LibrarySnippet, string, string?> row && row.Item1.Id == _draft?.Id);
+        }
+        finally
+        {
+            _revertingSelection = false;
+        }
+    }
+
+    private static string Describe(SnippetDraftError error) => error switch
+    {
+        SnippetDraftError.NeedsAbbreviationOrName => "Escribe al menos una abreviatura o un nombre.",
+        SnippetDraftError.AbbreviationTooLong => "Una abreviatura es demasiado larga (máximo 63 caracteres).",
+        SnippetDraftError.DelimiterInAbbreviation => "Tras un espacio o signo, las abreviaturas no pueden tener espacios ni signos.",
+        _ => "No se puede guardar.",
+    };
+
+    private void Fail(Exception ex)
+    {
+        App.Current.RecordFault(ex);
+        EditorMessage.Text = $"No se pudo guardar: {ex.Message}";
     }
 
     private static string GroupPathOf(string groupId)
@@ -224,27 +460,48 @@ public sealed partial class SnippetsPage : Page, IRefreshable
                 ? path
                 : group.Groups.Select(child => Find(child, id, path.Append(child.Name))).FirstOrDefault(found => found is not null);
 
-        return string.Join(" › ", Find(Library, groupId, []) ?? []);
+        var path = Find(Library, groupId, []) ?? [];
+        return path.Any() ? string.Join(" › ", path) : Library.Name;
     }
 
-    /// <summary>A group dropped under another one moves there (reordering among siblings is not stored yet).</summary>
+    /// <summary>
+    /// A dropped group keeps exactly the place it was dropped at: moved under its new parent if that changed, and the
+    /// new order among its siblings stored as shown.
+    /// </summary>
     /// <remarks>async void: every failure is caught and shown; an escaping exception freezes WinUI.</remarks>
     private async void OnGroupDragged(TreeView sender, TreeViewDragItemsCompletedEventArgs args)
     {
         try
         {
-            var parents = ParentIds(Library);
-            var newParent = args.NewParentItem is TreeViewNode node && _groups.TryGetValue(node, out var target) ? target : Library;
-            foreach (var moved in args.Items.OfType<TreeViewNode>().Select(n => _groups.GetValueOrDefault(n)).OfType<LibraryGroup>())
+            var root = Library;
+            var parents = ParentIds(root);
+            var parentNode = args.NewParentItem as TreeViewNode;
+            var newParent = parentNode is not null && _groups.TryGetValue(parentNode, out var target) ? target : root;
+            var moved = args.Items.OfType<TreeViewNode>()
+                .Select(n => _groups.GetValueOrDefault(n))
+                .OfType<LibraryGroup>()
+                .Where(g => g.Id != root.Id)
+                .ToArray();
+
+            // Dropped beside the root node there is no visible order to keep: the group goes last under the root.
+            var siblings = parentNode?.Children
+                .Select(n => _groups.TryGetValue(n, out var group) ? group.Id : null)
+                .OfType<string>()
+                .ToArray();
+
+            await App.Current.EditLibraryAsync(XamlRoot, async service =>
             {
-                if (parents.GetValueOrDefault(moved.Id) == newParent.Id || moved.Id == Library.Id)
+                foreach (var group in moved.Where(g => parents.GetValueOrDefault(g.Id) != newParent.Id))
                 {
-                    continue;
+                    await service.SaveGroupAsync(
+                        new GroupInfo(group.Id, newParent.Id, group.Name, group.Abbreviation, group.IgnoreCase), CancellationToken.None);
                 }
 
-                await App.Current.EditLibraryAsync(XamlRoot, service => service.SaveGroupAsync(
-                    new GroupInfo(moved.Id, newParent.Id, moved.Name, moved.Abbreviation, moved.IgnoreCase), CancellationToken.None));
-            }
+                if (siblings is { Length: > 0 })
+                {
+                    await service.ReorderGroupsAsync(newParent.Id, siblings, CancellationToken.None);
+                }
+            });
         }
         catch (Exception ex) when (ex is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException)
         {

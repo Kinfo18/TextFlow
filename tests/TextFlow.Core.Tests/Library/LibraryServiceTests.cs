@@ -68,6 +68,17 @@ public sealed class LibraryServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReorderingGroups_RaisesChanged_InTheNewOrder()
+    {
+        await _service.ImportAsync(Library() with { Groups = [.. Library().Groups, new LibraryGroup("g-2", "Dos", null, true, [], [])] }, CancellationToken.None);
+        _changes.Clear();
+
+        await _service.ReorderGroupsAsync("root", ["g-2", "g-t"], CancellationToken.None);
+
+        Assert.Equal(["g-2", "g-t"], Assert.Single(_changes).Groups.Select(g => g.Id));
+    }
+
+    [Fact]
     public async Task DeletingAGroup_RaisesChanged()
     {
         await _service.ImportAsync(Library(), CancellationToken.None);
@@ -109,5 +120,12 @@ public sealed class LibraryServiceTests : IDisposable
         }
 
         public Task DeleteSnippetAsync(string snippetId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task ReorderGroupsAsync(string parentId, IReadOnlyList<string> childIds, CancellationToken ct)
+        {
+            var byId = _root.Groups.ToDictionary(g => g.Id);
+            _root = _root with { Groups = childIds.Select(id => byId[id]).ToArray() };
+            return Task.CompletedTask;
+        }
     }
 }

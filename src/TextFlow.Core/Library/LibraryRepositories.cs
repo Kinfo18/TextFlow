@@ -18,6 +18,10 @@ public interface ILibraryRepository
     /// <summary>Creates or updates a group's own fields; a new group goes last among its siblings.</summary>
     Task SaveGroupAsync(GroupInfo group, CancellationToken ct);
 
+    /// <summary>Stores the order of a group's children as given (drag and drop in the editor).</summary>
+    /// <exception cref="InvalidOperationException">An id is not a child of <paramref name="parentId"/>.</exception>
+    Task ReorderGroupsAsync(string parentId, IReadOnlyList<string> childIds, CancellationToken ct);
+
     /// <summary>Deletes a group with all its subgroups and snippets.</summary>
     Task DeleteGroupAsync(string groupId, CancellationToken ct);
 

@@ -144,6 +144,29 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
         return await command.ExecuteScalarAsync(ct).ConfigureAwait(false);
     }
 
+    public async Task ReorderGroupsAsync(string parentId, IReadOnlyList<string> childIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(childIds);
+        await using var connection = await _db.OpenAsync(ct).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+        for (var i = 0; i < childIds.Count; i++)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE snippet_group SET sort_order = $order WHERE id = $id AND parent_id = $parent;";
+            command.Parameters.AddWithValue("$order", i);
+            command.Parameters.AddWithValue("$id", childIds[i]);
+            command.Parameters.AddWithValue("$parent", parentId);
+            if (await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidOperationException("El orden incluye un grupo que no está dentro de ese grupo.");
+            }
+        }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false); // nothing is stored unless every id matched
+    }
+
     public async Task DeleteGroupAsync(string groupId, CancellationToken ct)
     {
         await using var connection = await _db.OpenAsync(ct).ConfigureAwait(false);
