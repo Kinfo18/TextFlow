@@ -4,13 +4,19 @@
 
 ## 1. Estado del proyecto
 
+> **Revisión 2026-10-02 (cierre de Fase 0).** Los cambios de alcance acordados con el usuario están en
+> `docs/fase0-informe.md` §3 y ADR-0001…0008: expansión instantánea, menús de grupo, abreviaturas con espacios,
+> mayúsculas configurables por grupo, sonido al expandir con volumen, portapapeles primero para cualquier longitud
+> y motor ASR whisper.cpp large-v3-turbo en CUDA. Donde esta especificación contradiga un ADR, prevalece el ADR.
+
 ### Decisiones cerradas
 
 - Alcance de plataforma: únicamente Windows.
 - Sistema mínimo: Windows 11 24H2 (build 26100).
 - Público inicial: uso personal + beta cerrada con otros usuarios.
-- Expansión principal: trigger reconocido sin menú intermedio.
-- Ejemplo: `;firma` → expansión de la plantilla al confirmar el delimitador configurado.
+- Expansión principal: **instantánea** al escribir el último carácter del trigger, como aText (revisado tras Fase 0; el modo "al confirmar con delimitador" queda como opción por trigger).
+- Ejemplo: `cc` → expansión inmediata; `;firma` + espacio solo si ese trigger está en modo delimitador.
+- **Menús de grupo** (revisado tras Fase 0): la abreviatura de un grupo (`lc`) abre un menú no activable junto al caret con sus snippets y subgrupos (flechas, Enter, 1-9, Esc). Las abreviaturas duplicadas comparten menú; los snippets vacíos son notas informativas. Ver ADR-0008.
 - Campos de plantilla: editables y navegables con `Tab`.
 - Dictado: `Ctrl+Shift+D` pulsado y mantenido para hablar; al soltar se finaliza la sesión.
 - Objetivo de inserción: siempre la ventana/control capturado al iniciar el dictado.
