@@ -122,6 +122,15 @@ public sealed class LibraryHost : IAsyncDisposable
         await ApplyAsync(new ATextImport(root, []), ct).ConfigureAwait(false);
     }
 
+    /// <summary>TextFlow becomes the editor: changes to the aText file are no longer imported.</summary>
+    public void StopFollowingATextSource()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        Status = Status with { SourcePath = null };
+        StatusChanged?.Invoke();
+    }
+
     /// <summary>Reads the followed aText backup again.</summary>
     public Task ReimportAsync(CancellationToken ct) =>
         Status.SourcePath is { } path ? ImportAsync(path, ct) : Task.CompletedTask;

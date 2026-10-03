@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="TextFlow.App.Pages.SnippetsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid Padding="24,16,24,16" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="340" />
+            <ColumnDefinition Width="*" MinWidth="280" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Groups -->
+        <Grid RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <AutoSuggestBox x:Name="SearchBox" PlaceholderText="Buscar abreviatura, nombre o texto" QueryIcon="Find"
+                            TextChanged="OnSearchChanged" />
+            <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
+                <TreeView x:Name="GroupTree" SelectionMode="Single" CanDragItems="True" AllowDrop="True" CanReorderItems="True"
+                          ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" />
+            </Border>
+        </Grid>
+
+        <!-- Snippets of the group, or search results -->
+        <Grid Grid.Column="1" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Padding="4,6,4,0">
+                <TextBlock x:Name="ListTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="ListSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" />
+            </StackPanel>
+            <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
+                <ListView x:Name="SnippetList" SelectionMode="Single" SelectionChanged="OnSnippetSelected" />
+            </Border>
+        </Grid>
+
+        <!-- Details (editor in H3.3) -->
+        <Border Grid.Column="2" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="20">
+            <ScrollViewer>
+                <StackPanel x:Name="Details" Spacing="10">
+                    <TextBlock x:Name="DetailTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="DetailPath" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
+                    <StackPanel x:Name="DetailAbbreviations" Orientation="Horizontal" Spacing="6" />
+                    <TextBlock x:Name="DetailFlags" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.75" />
+                    <Border CornerRadius="6" Padding="12" Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                        <TextBlock x:Name="DetailContent" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="Segoe UI" />
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Page>

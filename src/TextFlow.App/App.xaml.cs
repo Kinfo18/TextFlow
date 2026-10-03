@@ -238,6 +238,49 @@ public partial class App : Application, IDisposable
         }
     }
 
+    /// <summary>
+    /// Runs an edit of the library (H3). The first edit while aText is still followed asks first, then stops following
+    /// it: otherwise the next change to the .atext file would overwrite the edit (user's choice, 2026-10-03).
+    /// </summary>
+    /// <returns>False when the user cancelled.</returns>
+    internal async Task<bool> EditLibraryAsync(Microsoft.UI.Xaml.XamlRoot xamlRoot, Func<Core.Library.LibraryService, Task> edit)
+    {
+        if (_library is null)
+        {
+            return false;
+        }
+
+        if (_library.Status.SourcePath is { } source)
+        {
+            var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+            {
+                XamlRoot = xamlRoot,
+                Title = "Editar en TextFlow",
+                Content = new Microsoft.UI.Xaml.Controls.TextBlock
+                {
+                    Text = $"Tu biblioteca se importa de «{Path.GetFileName(source)}» (aText). Si editas aquí, TextFlow dejará de "
+                        + "importar los cambios de ese archivo para no pisar tus ediciones. Siempre podrás volver a importarlo a mano.",
+                    TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+                    MaxWidth = 440,
+                },
+                PrimaryButtonText = "Editar en TextFlow",
+                CloseButtonText = "Cancelar",
+                DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
+            };
+            if (await dialog.ShowAsync() != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
+            {
+                return false;
+            }
+
+            _settings = _settings with { ATextBackupPath = null };
+            SaveSettings();
+            _library.StopFollowingATextSource();
+        }
+
+        await edit(_library.Service);
+        return true;
+    }
+
     private void SaveSettings()
     {
         try
