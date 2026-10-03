@@ -255,6 +255,20 @@ public sealed class SqliteStorageTests : IAsyncLifetime
         }
     }
 
+    [SkippableFact]
+    public void RealATextBackup_SurvivesTextFlowJson_Losslessly()
+    {
+        var backup = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "BUXtendo.atext");
+        Skip.IfNot(File.Exists(backup), "The user's private backup is not in this checkout.");
+        LibraryGroup imported;
+        using (var file = File.OpenRead(backup))
+        {
+            imported = ATextBackupReader.Read(file).Root;
+        }
+
+        AssertSameTree(imported, LibraryJson.Import(LibraryJson.Export(imported)));
+    }
+
     [Fact]
     public async Task ExclusionRules_CanBeSavedUpdatedAndDeleted()
     {

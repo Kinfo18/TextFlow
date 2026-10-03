@@ -8,13 +8,14 @@ namespace TextFlow.App;
 /// <summary>H2.3: the import report shown before an aText backup replaces the library. Counts only, no content.</summary>
 internal static class ImportDialog
 {
-    public static async Task<bool> ConfirmAsync(XamlRoot root, string fileName, ImportPreview preview)
+    /// <param name="stopsFollowing">aText file that will no longer be followed after this import, if any.</param>
+    public static async Task<bool> ConfirmAsync(XamlRoot root, string fileName, ImportPreview preview, string? stopsFollowing = null)
     {
         var dialog = new ContentDialog
         {
             XamlRoot = root,
             Title = $"Importar «{fileName}»",
-            Content = new ScrollViewer { Content = Report(preview), MaxHeight = 420 },
+            Content = new ScrollViewer { Content = Report(preview, stopsFollowing), MaxHeight = 420 },
             PrimaryButtonText = preview.ReplacesExisting ? "Reemplazar biblioteca" : "Importar",
             CloseButtonText = "Cancelar",
             DefaultButton = ContentDialogButton.Primary,
@@ -23,7 +24,7 @@ internal static class ImportDialog
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
-    private static StackPanel Report(ImportPreview preview)
+    private static StackPanel Report(ImportPreview preview, string? stopsFollowing)
     {
         var incoming = preview.Incoming;
         var panel = new StackPanel { Spacing = 10, MaxWidth = 460 };
@@ -66,6 +67,12 @@ internal static class ImportDialog
                 ? "Sin cambios: es la misma biblioteca."
                 : $"{preview.Added} comandos nuevos · {preview.Changed} modificados · {preview.Removed} se eliminan."));
             panel.Children.Add(Line("Antes de importar se guarda una copia de la biblioteca actual.", subtle: true));
+        }
+
+        if (stopsFollowing is not null)
+        {
+            panel.Children.Add(Line(
+                $"TextFlow dejará de importar los cambios de «{stopsFollowing}»: desde ahora esta copia es tu biblioteca.", subtle: true));
         }
 
         return panel;

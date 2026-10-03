@@ -89,6 +89,42 @@ public sealed class LibraryHost : IAsyncDisposable
         _watcher = Watch(path);
     }
 
+    /// <summary>Largest TextFlow library file accepted (the user's is ~300 KB): guards against reading a wrong huge file.</summary>
+    private const long MaxLibraryFileBytes = 50L * 1024 * 1024;
+
+    /// <summary>Writes the current library as TextFlow JSON (H2.4); a crash mid-write never leaves a half file.</summary>
+    public async Task ExportAsync(string path, CancellationToken ct)
+    {
+        var temporary = path + ".tmp";
+        await File.WriteAllTextAsync(temporary, LibraryJson.Export(Service.Current), ct).ConfigureAwait(false);
+        File.Move(temporary, path, overwrite: true);
+    }
+
+    /// <summary>Reads a TextFlow library file and reports what importing it would change, without writing anything.</summary>
+    /// <exception cref="InvalidDataException">Not a TextFlow library, a newer format, too big or inconsistent.</exception>
+    public async Task<(LibraryGroup Root, ImportPreview Preview)> PreviewLibraryFileAsync(string path, CancellationToken ct)
+    {
+        if (new FileInfo(path).Length > MaxLibraryFileBytes)
+        {
+            throw new InvalidDataException("El archivo es demasiado grande para ser una biblioteca de TextFlow.");
+        }
+
+        var root = LibraryJson.Import(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
+        return (root, ImportPreview.Of(new ATextImport(root, []), Service.Current));
+    }
+
+    /// <summary>
+    /// Replaces the library with a TextFlow file (snapshot first) and stops following aText: otherwise the next change
+    /// to the .atext file would overwrite what was just imported.
+    /// </summary>
+    public async Task ImportLibraryFileAsync(LibraryGroup root, CancellationToken ct)
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        Status = Status with { SourcePath = null };
+        await ApplyAsync(new ATextImport(root, []), ct).ConfigureAwait(false);
+    }
+
     /// <summary>Reads the followed aText backup again.</summary>
     public Task ReimportAsync(CancellationToken ct) =>
         Status.SourcePath is { } path ? ImportAsync(path, ct) : Task.CompletedTask;

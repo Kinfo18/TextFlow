@@ -86,6 +86,65 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <remarks>async void: every failure is caught and shown on Inicio (an escaping exception freezes WinUI).</remarks>
+    private async void OnExportLibrary(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = $"TextFlow {DateTime.Now:yyyy-MM-dd}",
+            };
+            picker.FileTypeChoices.Add("Biblioteca de TextFlow", [".json"]);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            if (await picker.PickSaveFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
+            {
+                await library.ExportAsync(path, CancellationToken.None);
+                _actionError = $"Biblioteca exportada a «{Path.GetFileName(path)}».";
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"No se pudo exportar: {ex.Message}";
+            App.Current.RecordFault(ex);
+        }
+        finally
+        {
+            Refresh();
+        }
+    }
+
+    private async void OnImportLibraryFile(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add(".json");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path } && App.Current.Library is { } library)
+            {
+                var (root, preview) = await library.PreviewLibraryFileAsync(path, CancellationToken.None);
+                var following = library.Status.SourcePath is { } source ? Path.GetFileName(source) : null;
+                if (await ImportDialog.ConfirmAsync(Content.XamlRoot, Path.GetFileName(path), preview, following))
+                {
+                    await App.Current.ImportLibraryFileAsync(root);
+                }
+            }
+
+            _actionError = null;
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"No se pudo importar: {ex.Message}";
+            App.Current.RecordFault(ex);
+        }
+        finally
+        {
+            Refresh();
+        }
+    }
+
     private async void OnReloadLibrary(object sender, RoutedEventArgs e)
     {
         if (App.Current.Library is not { } library)

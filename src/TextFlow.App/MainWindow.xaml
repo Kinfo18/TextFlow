@@ -71,6 +71,18 @@
                                 <TextBlock Text="Reimportar" />
                             </StackPanel>
                         </Button>
+                        <DropDownButton x:Name="MoreLibraryButton" Content="Más">
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Placement="Bottom">
+                                    <MenuFlyoutItem Text="Exportar biblioteca…" Click="OnExportLibrary">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem Text="Importar copia de TextFlow…" Click="OnImportLibraryFile">
+                                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B5;" /></MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

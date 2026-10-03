@@ -206,6 +206,17 @@ public partial class App : Application, IDisposable
         }
     }
 
+    /// <summary>Imports a TextFlow library file; aText is no longer followed.</summary>
+    internal async Task ImportLibraryFileAsync(Core.Library.LibraryGroup root)
+    {
+        _settings = _settings with { ATextBackupPath = null };
+        SaveSettings();
+        if (_library is not null)
+        {
+            await _library.ImportLibraryFileAsync(root, CancellationToken.None);
+        }
+    }
+
     private void SaveSettings()
     {
         try
