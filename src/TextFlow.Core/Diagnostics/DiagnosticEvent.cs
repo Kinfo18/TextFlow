@@ -34,6 +34,9 @@ public sealed record HookReinstalled(DateTimeOffset At, int TimesThisSession) : 
 
 public sealed record EngineStateChanged(DateTimeOffset At, EngineState State) : DiagnosticEvent(At);
 
+/// <summary>A library was installed in the engine (startup, file changed, user picked another backup).</summary>
+public sealed record LibraryLoaded(DateTimeOffset At, int Menus, int Commands, int DirectTriggers, int Issues) : DiagnosticEvent(At);
+
 /// <summary>An event failed and was skipped; the engine keeps running. Only the exception type, never its message.</summary>
 public sealed record EngineFault(DateTimeOffset At, [property: SafeToLog] string ExceptionType) : DiagnosticEvent(At);
 

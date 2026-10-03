@@ -27,6 +27,18 @@ public class SecurityPolicyTests
     private static SecurityPolicy Policy(params ExclusionRule[] rules) => new(BuiltinExclusions.All.Concat(rules));
 
     [Fact]
+    public void TextFlowItself_IsExcluded_SoItsOwnWindowsNeverCaptureOrExpand()
+    {
+        var policy = new SecurityPolicy(BuiltinExclusions.For("TextFlow.exe"));
+
+        var decision = policy.Evaluate(Target(process: "TextFlow.exe"), TextFlowFeature.Expansion);
+
+        Assert.False(decision.IsAllowed);
+        Assert.Equal("builtin:self:TextFlow.exe", decision.RuleId);
+        Assert.True(policy.Evaluate(Target(), TextFlowFeature.Expansion).IsAllowed);
+    }
+
+    [Fact]
     public void RegularEditor_IsAllowedForAllFeatures()
     {
         var policy = Policy();

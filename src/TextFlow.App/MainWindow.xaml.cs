@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.Storage.Pickers;
+using TextFlow.App.Engine;
 using Windows.Graphics;
 
 namespace TextFlow.App;
@@ -15,6 +17,9 @@ public sealed partial class MainWindow : Window
         ["diagnostics"] = ("Diagnóstico", "Métricas técnicas sin contenido: inserciones, destinos rechazados, latencias (H5)."),
     };
 
+    private string _current = "home";
+    private string? _actionError;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -23,8 +28,6 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32(1100, 720));
         Show("home");
     }
-
-    private string _current = "home";
 
     /// <summary>Re-reads the engine state (pause, library) into the visible section.</summary>
     public void Refresh() => Show(_current);
@@ -42,7 +45,65 @@ public sealed partial class MainWindow : Window
         _current = tag;
         var (title, body) = Sections[tag];
         SectionTitle.Text = title;
-        SectionBody.Text = tag == "home" ? HomeStatus() : body;
+        SectionBody.Text = tag == "home" ? HomeStatus() + (_actionError is { } error ? $"\n\n{error}" : string.Empty) : body;
+        HomeActions.Visibility = tag == "home" && App.Current.Engine is not null ? Visibility.Visible : Visibility.Collapsed;
+        ReloadLibraryButton.IsEnabled = App.Current.Engine?.Library.Path is not null;
+    }
+
+    /// <remarks>
+    /// async void: an escaping exception would freeze WinUI (its error reporting deadlocked here), so every failure
+    /// is caught and shown on Inicio. Classic picker + InitializeWithWindow: the WinAppSDK picker failed with
+    /// RPC_E_WRONG_THREAD in this unpackaged app.
+    /// </remarks>
+    private async void OnChooseLibrary(object sender, RoutedEventArgs e)
+    {
+        ChooseLibraryButton.IsEnabled = false;
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add(".atext");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            if (await picker.PickSingleFileAsync() is { Path: { Length: > 0 } path })
+            {
+                await App.Current.ChooseLibraryAsync(path);
+            }
+
+            _actionError = null;
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"No se pudo elegir el archivo: {ex.Message}";
+            App.Current.RecordFault(ex);
+        }
+        finally
+        {
+            ChooseLibraryButton.IsEnabled = true;
+            Refresh();
+        }
+    }
+
+    private async void OnReloadLibrary(object sender, RoutedEventArgs e)
+    {
+        if (App.Current.Engine is not { } engine)
+        {
+            return;
+        }
+
+        ReloadLibraryButton.IsEnabled = false;
+        try
+        {
+            await engine.ReloadAsync();
+            _actionError = null;
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"No se pudo recargar: {ex.Message}";
+            App.Current.RecordFault(ex);
+        }
+        finally
+        {
+            Refresh();
+        }
     }
 
     private static string HomeStatus()
@@ -66,13 +127,31 @@ public sealed partial class MainWindow : Window
             { } hotkey => $"El atajo {hotkey.Gesture} lo usa otra aplicación; pausa desde la bandeja.",
             null => string.Empty,
         };
-        var library = engine.Library switch
-        {
-            { Error: { } error } => $"No se pudo cargar la biblioteca: {error}",
-            { Menus: 0, Commands: 0 } => "Sin biblioteca: indica la ruta de tu backup de aText en \"ATextBackupPath\" de settings.json.",
-            var loaded => $"Biblioteca cargada: {loaded.Menus} menús y {loaded.Commands} comandos directos.",
-        };
 
-        return string.Join("\n\n", new[] { state, shortcut, library }.Where(s => s.Length > 0));
+        return string.Join("\n\n", new[] { state, shortcut, LibraryText(engine.Library) }.Where(s => s.Length > 0));
+    }
+
+    private static string LibraryText(LibraryStatus library)
+    {
+        if (library.Path is null)
+        {
+            return "Sin biblioteca: elige tu backup de aText (.atext) para empezar a expandir.";
+        }
+
+        var file = Path.GetFileName(library.Path);
+        var loaded = library.Summary is { } summary
+            ? $"Biblioteca «{file}»: {summary.Menus} menús y {summary.Commands} comandos "
+              + $"({summary.DirectTriggers} abreviaturas se expanden al escribirlas)."
+              + (summary.Issues > 0 ? $" {summary.Issues} avisos de importación." : string.Empty)
+              + " Se recarga sola si el archivo cambia."
+            : null;
+
+        return (library.Error, loaded) switch
+        {
+            (null, { } text) => text,
+            ({ } error, { } text) => $"{text}\n\nLa última recarga falló ({error}); se mantiene la biblioteca anterior.",
+            ({ } error, null) => $"No se pudo cargar «{file}»: {error}",
+            (null, null) => $"Cargando «{file}»…",
+        };
     }
 }

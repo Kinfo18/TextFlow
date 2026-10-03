@@ -32,6 +32,12 @@ public static class BuiltinExclusions
         .. ConsoleClasses.Select(c => new ExclusionRule($"builtin:console-class:{c}", ExclusionMatchType.WindowClass, c, FeatureScope.All)),
     ];
 
+    /// <summary>
+    /// <see cref="All"/> plus TextFlow's own process: its windows (library editor, settings) must never be captured
+    /// or expanded into, and inspecting them with UI Automation from inside the process stalls its UI thread.
+    /// </summary>
+    public static IReadOnlyList<ExclusionRule> For(string selfProcessName) => [.. All, ProcessRule("self", selfProcessName)];
+
     private static ExclusionRule ProcessRule(string category, string process) =>
         new($"builtin:{category}:{process}", ExclusionMatchType.Process, process, FeatureScope.All);
 }

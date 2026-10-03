@@ -48,7 +48,11 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
 
         var (focus, caret) = GetFocusAndCaret(threadId);
         var processName = GetProcessName(processId);
-        var control = _controlInspector.Inspect(processId) ?? FocusedControlInfo.Unknown;
+        // Never UI Automation against our own windows: the provider is our UI thread (re-entrancy, stalls).
+        // The security policy excludes TextFlow itself, so nothing is captured there anyway.
+        var control = processId == (uint)Environment.ProcessId
+            ? FocusedControlInfo.Unknown
+            : _controlInspector.Inspect(processId) ?? FocusedControlInfo.Unknown;
 
         return new ActiveTarget(
             WindowHandle: (nint)window.Value,

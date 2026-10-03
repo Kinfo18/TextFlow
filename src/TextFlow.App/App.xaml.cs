@@ -34,6 +34,12 @@ public partial class App : Application, IDisposable
     {
         InitializeComponent();
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown; // hiding the last window must not exit
+        UnhandledException += (_, e) =>
+        {
+            // Last resort for UI-thread exceptions: log the type and keep TextFlow (and its hook) alive.
+            RecordFault(e.Exception);
+            e.Handled = true;
+        };
         _host = Host.CreateDefaultBuilder()
             .ConfigureServices(services =>
             {
@@ -106,8 +112,9 @@ public partial class App : Application, IDisposable
 
         var paths = Services.GetRequiredService<AppPaths>();
         _settings = AppSettings.Load(paths.Settings);
-        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), Services.GetRequiredService<IDiagnosticSink>());
-        await _engine.StartAsync();
+        _engine = new EngineHost(_settings.ChimeVolume, new WinUiMenuPresenter(ui, popup), Services.GetRequiredService<IDiagnosticSink>());
+        _engine.LibraryChanged += () => ui.TryEnqueue(() => _window?.Refresh());
+        await _engine.StartAsync(_settings.ATextBackupPath);
 
         var tray = new TrayIcon();
         tray.CommandInvoked += command => ui.TryEnqueue(() => OnTrayCommand(command));
@@ -165,17 +172,33 @@ public partial class App : Application, IDisposable
         _tray?.SetStartWithWindows(_startup?.IsEnabled ?? false);
     }
 
-    private void ToggleStartWithWindows()
+    /// <summary>Uses another aText backup from now on (Inicio → "Elegir backup de aText…").</summary>
+    internal async Task ChooseLibraryAsync(string path)
     {
-        _settings = _settings with { StartWithWindows = !_settings.StartWithWindows };
+        _settings = _settings with { ATextBackupPath = path };
+        SaveSettings();
+        if (_engine is not null)
+        {
+            await _engine.UseLibraryAsync(path);
+        }
+    }
+
+    private void SaveSettings()
+    {
         try
         {
             _settings.Save(Services.GetRequiredService<AppPaths>().Settings);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            RecordFault(ex);
+            RecordFault(ex); // the choice still applies until TextFlow restarts
         }
+    }
+
+    private void ToggleStartWithWindows()
+    {
+        _settings = _settings with { StartWithWindows = !_settings.StartWithWindows };
+        SaveSettings();
 
         ApplyStartWithWindows(_settings.StartWithWindows);
     }
@@ -261,7 +284,7 @@ public partial class App : Application, IDisposable
     }
 
     /// <summary>Content-free: only the exception type reaches the log.</summary>
-    private void RecordFault(Exception ex)
+    internal void RecordFault(Exception ex)
     {
         try
         {
