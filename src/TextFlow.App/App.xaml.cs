@@ -24,6 +24,7 @@ public partial class App : Application, IDisposable
     private EngineHost? _engine;
     private LibraryHost? _library;
     private TrayIcon? _tray;
+    private MenuPopup? _popup;
     private SingleInstance? _instance;
     private AppSettings _settings = new();
     private StartupRegistration? _startup;
@@ -71,6 +72,7 @@ public partial class App : Application, IDisposable
         _settings = _settings with { Theme = theme };
         SaveSettings();
         _window?.ApplyTheme(theme);
+        _popup?.ApplyTheme(theme);
     }
 
     internal void SetStartWithWindows(bool enabled)
@@ -91,6 +93,11 @@ public partial class App : Application, IDisposable
     {
         _ui = DispatcherQueue.GetForCurrentThread();
         var background = Environment.GetCommandLineArgs().Contains(StartupRegistration.BackgroundArgument, StringComparer.OrdinalIgnoreCase);
+
+        if (MenuPreview.TryShow(Environment.GetCommandLineArgs()))
+        {
+            return; // design preview only: no hook, no tray, no single-instance check
+        }
 
         _instance = new SingleInstance(InstanceName);
         if (!_instance.IsFirst)
@@ -133,6 +140,8 @@ public partial class App : Application, IDisposable
 
         var popup = new MenuPopup();
         popup.Prime();
+        popup.ApplyTheme(_settings.Theme);
+        _popup = popup;
 
         var paths = Services.GetRequiredService<AppPaths>();
         _settings = AppSettings.Load(paths.Settings);
