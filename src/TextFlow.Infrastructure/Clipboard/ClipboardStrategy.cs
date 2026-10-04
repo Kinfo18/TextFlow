@@ -83,6 +83,10 @@ public sealed class ClipboardStrategy : IInsertionStrategy, IDisposable
 
             var pasted = KeyboardInput.Chord(VIRTUAL_KEY.VK_CONTROL, VIRTUAL_KEY.VK_V) == 4;
             var inputSent = sentBack > 0 || pasted;
+            if (pasted)
+            {
+                request.Delivered?.Invoke();
+            }
 
             // Not cancellable: once Ctrl+V was sent we must still try to restore the user's clipboard.
             await Task.Delay(_options.PasteSettleDelay, CancellationToken.None).ConfigureAwait(false);

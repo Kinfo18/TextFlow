@@ -27,12 +27,14 @@ public sealed class EngineHost : IAsyncDisposable
     private readonly IDiagnosticSink _sink;
     private readonly CancellationTokenSource _stop = new();
     private readonly HookWatchdog _watchdog;
+    private readonly ExpansionSound _sound;
     private Task? _run;
     private bool _disposed;
 
-    public EngineHost(double chimeVolume, IMenuPresenter menu, IDiagnosticSink sink)
+    public EngineHost(bool soundEnabled, double chimeVolume, IMenuPresenter menu, IDiagnosticSink sink)
     {
         _sink = sink;
+        _sound = new ExpansionSound(chimeVolume) { Enabled = soundEnabled };
         var resolver = new Win32TargetResolver(new UiaFocusedControlInspector());
         _clipboard = new ClipboardStrategy();
         _hook = new KeyboardHook(new TriggerMatcher([], TriggerOptions.Default));
@@ -42,7 +44,7 @@ public sealed class EngineHost : IAsyncDisposable
             new SecurityPolicy(BuiltinExclusions.For(Path.GetFileName(Environment.ProcessPath) ?? "TextFlow.exe")),
             new InsertionCoordinator(resolver, [_clipboard, new SendInputStrategy()], new InsertionOptions()),
             menu,
-            new ExpansionSound(chimeVolume),
+            _sound,
             new CursorPointerLocator(),
             sink,
             TimeProvider.System,
@@ -73,6 +75,22 @@ public sealed class EngineHost : IAsyncDisposable
 
     /// <summary>Installs a new library at once (startup, import, edit): its triggers replace the previous ones.</summary>
     public Task UseLibraryAsync(LibraryGroup library) => _engine.LoadAsync(LibraryIndex.Build(library));
+
+    /// <summary>Applies the Configuración sound choices at once (any thread).</summary>
+    public void ConfigureSound(bool enabled, double volume)
+    {
+        _sound.Enabled = enabled;
+        if (_sound.Volume != volume)
+        {
+            _sound.Volume = volume;
+        }
+    }
+
+    /// <summary>"Probar" in Configuración: the same chime an expansion plays. False if off or no audio device.</summary>
+    public bool PlayChime() => _sound.Play();
+
+    /// <summary>Wakes a sleeping audio device (inaudible) before the user presses "Probar".</summary>
+    public void WarmSound() => _sound.Warm();
 
     public void TogglePause()
     {

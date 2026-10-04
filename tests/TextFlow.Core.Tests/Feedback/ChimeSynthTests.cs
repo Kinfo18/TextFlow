@@ -34,7 +34,24 @@ public class ChimeSynthTests
         var sampleRate = BinaryPrimitives.ReadInt32LittleEndian(Wav.AsSpan(24));
         var duration = TimeSpan.FromSeconds((Wav.Length - 44) / 2.0 / sampleRate);
 
-        Assert.InRange(duration.TotalMilliseconds, 180, 260);
+        Assert.InRange(duration.TotalMilliseconds, 95, 130);
+    }
+
+    [Fact]
+    public void ColdChime_HasTheLongerLeadIn_ForADeviceThatMayStillBeWaking()
+    {
+        var cold = ChimeSynth.CreateExpansionChime(1.0, ChimeSynth.ColdLeadIn);
+        var extraBytes = cold.Length - Wav.Length;
+
+        var extra = TimeSpan.FromSeconds(extraBytes / 2.0 / 44_100);
+        Assert.InRange((extra - (ChimeSynth.ColdLeadIn - ChimeSynth.LeadIn)).Duration().TotalMilliseconds, 0, 1);
+        Assert.True(ChimeSynth.ColdLeadIn >= TimeSpan.FromMilliseconds(120)); // the length that played 12/12 (H1)
+    }
+
+    [Fact]
+    public void Chime_NotesStartAlmostAtOnce_SoTheSoundFeelsInstant()
+    {
+        Assert.True(ChimeSynth.LeadIn <= TimeSpan.FromMilliseconds(20)); // waking the device is Warm's job (H4.2)
     }
 
     [Fact]

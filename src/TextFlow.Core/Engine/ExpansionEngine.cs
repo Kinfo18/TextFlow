@@ -311,6 +311,7 @@ public sealed class ExpansionEngine
 
     private Task SendToMenu(MenuInput input)
     {
+        _feedback.Warm(); // menu keys are swallowed (no TypingActivity): keep the audio device awake for the choice
         _menu.Send(input);
         return Task.CompletedTask;
     }
@@ -439,8 +440,23 @@ public sealed class ExpansionEngine
 
     private async Task<InsertionResult> ExpandAsync(ActiveTarget target, string text, int backspaces, bool fromMenu)
     {
-        var result = await _insertion.InsertAsync(new InsertionRequest(target, text, backspaces), _stopping).ConfigureAwait(false);
-        var played = result.Succeeded && _feedback.Play();
+        // Chime the moment the text lands, not after the clipboard restore (~250 ms later): it must feel instant.
+        var delivered = 0;
+        var played = false;
+        void OnDelivered()
+        {
+            if (Interlocked.Exchange(ref delivered, 1) == 0)
+            {
+                played = _feedback.Play();
+            }
+        }
+
+        var result = await _insertion.InsertAsync(new InsertionRequest(target, text, backspaces, Delivered: OnDelivered), _stopping).ConfigureAwait(false);
+        if (result.Succeeded)
+        {
+            OnDelivered(); // a strategy that does not report delivery
+        }
+
         Record(new ExpansionCompleted(
             Now, target.ProcessName, result.Strategy, result.Status, result.Elapsed.TotalMilliseconds, fromMenu, played));
         return result;

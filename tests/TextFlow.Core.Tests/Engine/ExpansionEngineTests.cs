@@ -121,6 +121,53 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Sound_PlaysAsSoonAsTheTextIsDelivered_NotAfterTheClipboardIsRestored()
+    {
+        await StartAsync();
+        var restore = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _insertion.HoldAfterDelivery = restore;
+
+        _hook.Raise(new TriggerTyped(Match("cc"), FakeResolver.Window));
+        await _insertion.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, _feedback.Plays); // insertion still running (restoring the clipboard)
+
+        restore.SetResult();
+        await SettleAsync();
+        Assert.Equal(1, _feedback.Plays);
+        Assert.Contains(_sink.Events, e => e is ExpansionCompleted { SoundPlayed: true });
+    }
+
+    [Fact]
+    public async Task Sound_AfterDelivery_StaysPlayedEvenIfTheClipboardCouldNotBeRestored()
+    {
+        await StartAsync();
+        var restore = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _insertion.HoldAfterDelivery = restore;
+        _insertion.NextStatus = InsertionStatus.ClipboardConflict;
+
+        _hook.Raise(new TriggerTyped(Match("cc"), FakeResolver.Window));
+        await _insertion.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        restore.SetResult();
+        await SettleAsync();
+
+        Assert.Equal(1, _feedback.Plays);
+        Assert.Contains(_sink.Events, e => e is ExpansionCompleted { Status: InsertionStatus.ClipboardConflict, SoundPlayed: true });
+    }
+
+    [Fact]
+    public async Task MenuKeys_WarmTheAudioDevice_SoAChoiceAfterALongLookIsHeard()
+    {
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("LC"), FakeResolver.Window));
+        var before = _feedback.Warms;
+
+        await TypeAsync(new MenuKeyPressed(MenuInput.Down));
+
+        Assert.Equal(before + 1, _feedback.Warms);
+    }
+
+    [Fact]
     public async Task MenuTrigger_ShowsMenuAtCaret_AndEntersMenuMode()
     {
         await StartAsync();

@@ -7,12 +7,18 @@ namespace TextFlow.Core.Feedback;
 /// notes with a soft attack and exponential decay, as a 16-bit mono PCM WAV.
 /// </summary>
 /// <remarks>
-/// The notes are preceded by <see cref="LeadIn"/> of inaudible noise: laptop audio endpoints power down when
-/// idle and swallow the first ~100 ms on wake-up, which made the 95 ms chime play only sometimes.
+/// Laptop audio endpoints power down when idle and swallow the first ~100 ms on wake-up. Waking is the job of
+/// <see cref="CreateWakeNoise"/>, played while the user types or browses a menu. When the device is known to be awake
+/// the chime keeps only a short <see cref="LeadIn"/> of inaudible noise, because every lead-in millisecond is felt as
+/// delay; when it may still be waking it uses <see cref="ColdLeadIn"/> instead (H4.2).
 /// </remarks>
 public static class ChimeSynth
 {
-    public static readonly TimeSpan LeadIn = TimeSpan.FromMilliseconds(120);
+    /// <summary>Lead-in for an awake device: the notes start almost at once.</summary>
+    public static readonly TimeSpan LeadIn = TimeSpan.FromMilliseconds(15);
+
+    /// <summary>Lead-in for a device that may still be waking (the length that played 12/12 in H1).</summary>
+    public static readonly TimeSpan ColdLeadIn = TimeSpan.FromMilliseconds(120);
 
     private const int LeadInAmplitude = 6;
     private const int SampleRate = 44_100;
@@ -27,11 +33,12 @@ public static class ChimeSynth
     ];
 
     /// <param name="volume">User volume 0-1 (clamped), linear on top of the built-in peak.</param>
-    public static byte[] CreateExpansionChime(double volume = 1.0)
+    /// <param name="leadIn">Inaudible noise before the notes; <see cref="LeadIn"/> when null.</param>
+    public static byte[] CreateExpansionChime(double volume = 1.0, TimeSpan? leadIn = null)
     {
         var level = Math.Clamp(volume, 0, 1);
-        var leadIn = (int)(LeadIn.TotalSeconds * SampleRate);
-        var samples = (level > 0 ? WakeUpNoise(leadIn) : Enumerable.Repeat((short)0, leadIn))
+        var leadInSamples = (int)((leadIn ?? LeadIn).TotalSeconds * SampleRate);
+        var samples = (level > 0 ? WakeUpNoise(leadInSamples) : Enumerable.Repeat((short)0, leadInSamples))
             .Concat(Notes.SelectMany(note => Tone(note.Frequency, note.Seconds, note.Gain * level)))
             .ToArray();
         return ToWav(samples);

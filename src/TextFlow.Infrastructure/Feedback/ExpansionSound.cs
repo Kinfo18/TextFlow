@@ -9,7 +9,8 @@ namespace TextFlow.Infrastructure.Feedback;
 /// <summary>
 /// Plays the expansion chime asynchronously from memory (winmm PlaySound, SND_MEMORY | SND_ASYNC).
 /// The WAV buffer is pinned because PlaySound keeps reading it after returning; changing the volume
-/// stops any playing chime before the old buffer is released.
+/// stops any playing chime before the old buffer is released. When the audio device may still be waking (first sound
+/// after a pause) the chime with the longer lead-in plays, otherwise the instant one (see <see cref="AudioWakeTracker"/>).
 /// </summary>
 public sealed class ExpansionSound : IExpansionFeedback
 {
@@ -19,10 +20,16 @@ public sealed class ExpansionSound : IExpansionFeedback
     /// <summary>A sound within this window already keeps the endpoint awake; never cut a chime short with noise.</summary>
     private static readonly TimeSpan WarmCooldown = TimeSpan.FromSeconds(3);
 
+    /// <summary>Conservative: the dev laptop's endpoint slept after ~10 s idle.</summary>
+    private static readonly TimeSpan SleepsAfter = TimeSpan.FromSeconds(8);
+
     private static readonly byte[] WakeNoise = Pin(ChimeSynth.CreateWakeNoise(WakeLength));
 
     private readonly Lock _gate = new();
+    private readonly long _origin = Stopwatch.GetTimestamp();
+    private readonly AudioWakeTracker _wake = new(SleepsAfter, WakeLength);
     private byte[] _chime;
+    private byte[] _coldChime;
     private double _volume;
     private long _lastSoundAt;
 
@@ -31,6 +38,7 @@ public sealed class ExpansionSound : IExpansionFeedback
     {
         _volume = Math.Clamp(volume, 0, 1);
         _chime = Pin(ChimeSynth.CreateExpansionChime(_volume));
+        _coldChime = Pin(ChimeSynth.CreateExpansionChime(_volume, ChimeSynth.ColdLeadIn));
     }
 
     /// <summary>User preference; off means <see cref="Play"/> does nothing.</summary>
@@ -44,11 +52,13 @@ public sealed class ExpansionSound : IExpansionFeedback
         {
             var volume = Math.Clamp(value, 0, 1);
             var chime = Pin(ChimeSynth.CreateExpansionChime(volume));
+            var coldChime = Pin(ChimeSynth.CreateExpansionChime(volume, ChimeSynth.ColdLeadIn));
             lock (_gate)
             {
                 Stop();
                 _volume = volume;
                 _chime = chime;
+                _coldChime = coldChime;
             }
         }
     }
@@ -63,8 +73,9 @@ public sealed class ExpansionSound : IExpansionFeedback
 
         lock (_gate)
         {
-            _lastSoundAt = Stopwatch.GetTimestamp();
-            fixed (byte* wav = _chime)
+            var wavBuffer = _wake.IsAwake(Now) ? _chime : _coldChime;
+            MarkSoundStarted();
+            fixed (byte* wav = wavBuffer)
             {
                 return PInvoke.PlaySound(
                     (char*)wav,
@@ -89,12 +100,20 @@ public sealed class ExpansionSound : IExpansionFeedback
                 return;
             }
 
-            _lastSoundAt = Stopwatch.GetTimestamp();
+            MarkSoundStarted();
             fixed (byte* wav = WakeNoise)
             {
                 PInvoke.PlaySound((char*)wav, default, SND_FLAGS.SND_MEMORY | SND_FLAGS.SND_ASYNC | SND_FLAGS.SND_NODEFAULT);
             }
         }
+    }
+
+    private TimeSpan Now => Stopwatch.GetElapsedTime(_origin);
+
+    private void MarkSoundStarted()
+    {
+        _lastSoundAt = Stopwatch.GetTimestamp();
+        _wake.SoundStarted(Now);
     }
 
     private static unsafe void Stop() => PInvoke.PlaySound((char*)null, default, 0);

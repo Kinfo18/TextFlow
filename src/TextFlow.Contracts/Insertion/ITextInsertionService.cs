@@ -28,12 +28,15 @@ public enum InsertionStrategyKind
 /// <param name="Text">Text to insert. In-memory only; never log.</param>
 /// <param name="BackspacesBefore">Characters to delete before inserting (e.g. the typed trigger).</param>
 /// <param name="CaretOffsetFromEnd">Left-arrow presses after inserting, to place the caret at <c>{{cursor}}</c>.</param>
+/// <param name="Delivered">Invoked at most once, on any thread, the moment the text reached the target (paste or typing
+/// sent), before slower cleanup such as restoring the clipboard. Lets the chime match what the user sees.</param>
 public sealed record InsertionRequest(
     ActiveTarget Target,
     string Text,
     int BackspacesBefore = 0,
     InsertionStrategyKind? PreferredStrategy = null,
-    int CaretOffsetFromEnd = 0);
+    int CaretOffsetFromEnd = 0,
+    Action? Delivered = null);
 
 public enum InsertionStatus
 {

@@ -62,6 +62,10 @@ public partial class App : Application, IDisposable
 
     internal AppTheme Theme => _settings.Theme;
 
+    internal bool SoundEnabled => _settings.SoundEnabled;
+
+    internal double ChimeVolume => _settings.ChimeVolume;
+
     internal bool StartsWithWindows => _startup?.IsEnabled ?? false;
 
     /// <summary>Owner window for file pickers and dialogs.</summary>
@@ -74,6 +78,18 @@ public partial class App : Application, IDisposable
         _window?.ApplyTheme(theme);
         _popup?.ApplyTheme(theme);
     }
+
+    internal void SetSound(bool enabled, double volume)
+    {
+        _settings = _settings with { SoundEnabled = enabled, ChimeVolume = Math.Clamp(volume, 0, 1) };
+        SaveSettings();
+        _engine?.ConfigureSound(_settings.SoundEnabled, _settings.ChimeVolume);
+    }
+
+    /// <summary>Plays the chime at the current settings; false if sound is off, the volume is 0 or there is no audio device.</summary>
+    internal bool PlayChime() => _engine?.PlayChime() ?? false;
+
+    internal void WarmSound() => _engine?.WarmSound();
 
     internal void SetStartWithWindows(bool enabled)
     {
@@ -140,16 +156,16 @@ public partial class App : Application, IDisposable
 
         var popup = new MenuPopup();
         popup.Prime();
-        popup.ApplyTheme(_settings.Theme);
         _popup = popup;
 
         var paths = Services.GetRequiredService<AppPaths>();
         _settings = AppSettings.Load(paths.Settings);
+        popup.ApplyTheme(_settings.Theme); // after Load: before it _settings still holds the defaults
         var sink = Services.GetRequiredService<IDiagnosticSink>();
         _library = new LibraryHost(paths, sink);
         var library = await _library.InitializeAsync(_settings.ATextBackupPath, CancellationToken.None);
 
-        _engine = new EngineHost(_settings.ChimeVolume, new WinUiMenuPresenter(ui, popup), sink);
+        _engine = new EngineHost(_settings.SoundEnabled, _settings.ChimeVolume, new WinUiMenuPresenter(ui, popup), sink);
         await _engine.StartAsync(library);
 
         // Every import or edit re-indexes the engine at once (H2.2), and the window shows the new counts.

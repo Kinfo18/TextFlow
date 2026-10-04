@@ -9,6 +9,7 @@ namespace TextFlow.App;
 /// </summary>
 /// <param name="ATextBackupPath">aText backup loaded as the library (H1.5, provisional until the importer in H2).</param>
 /// <param name="ChimeVolume">0-1.</param>
+/// <param name="SoundEnabled">Expansion chime on/off (H4.2); the volume is kept while it is off.</param>
 /// <param name="StartWithWindows">Kept in sync with the HKCU Run entry at every start (H1.3).</param>
 /// <param name="PauseHotkey">Global pause/resume shortcut, e.g. "Ctrl+Shift+Alt+P" (H1.4); null or invalid uses the default.</param>
 /// <param name="Theme">Window theme (H3.1).</param>
@@ -17,7 +18,8 @@ public sealed record AppSettings(
     double ChimeVolume = 1.0,
     bool StartWithWindows = true,
     string? PauseHotkey = null,
-    AppTheme Theme = AppTheme.System)
+    AppTheme Theme = AppTheme.System,
+    bool SoundEnabled = true)
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 

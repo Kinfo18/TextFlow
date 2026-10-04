@@ -111,10 +111,23 @@ internal sealed class FakeInsertion : ITextInsertionService
 
     public InsertionStatus NextStatus { get; set; } = InsertionStatus.Success;
 
-    public Task<InsertionResult> InsertAsync(InsertionRequest request, CancellationToken ct)
+    /// <summary>When set, the fake reports delivery like a real strategy and then waits here (clipboard restore).</summary>
+    public TaskCompletionSource? HoldAfterDelivery { get; set; }
+
+    /// <summary>Completes once the fake reported delivery.</summary>
+    public TaskCompletionSource Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<InsertionResult> InsertAsync(InsertionRequest request, CancellationToken ct)
     {
         Requests.Add(request);
-        return Task.FromResult(new InsertionResult(NextStatus, InsertionStrategyKind.Clipboard, TimeSpan.FromMilliseconds(10)));
+        if (HoldAfterDelivery is { } hold)
+        {
+            request.Delivered?.Invoke();
+            Delivered.TrySetResult();
+            await hold.Task.ConfigureAwait(false);
+        }
+
+        return new InsertionResult(NextStatus, InsertionStrategyKind.Clipboard, TimeSpan.FromMilliseconds(10), InputSent: HoldAfterDelivery is not null);
     }
 }
 

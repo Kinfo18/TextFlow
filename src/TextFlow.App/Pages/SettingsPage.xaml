@@ -26,7 +26,34 @@
                               OnContent="Activado" OffContent="Desactivado" Toggled="OnStartWithWindowsToggled" />
             </Border>
 
-            <TextBlock Text="Sonido, atajo de pausa y exclusiones por aplicación llegan en H4."
+            <TextBlock Text="Sonido" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
+            <Border x:Name="SoundCard" Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="12">
+                    <ToggleSwitch x:Name="SoundSwitch" Header="Sonar al expandir"
+                                  OnContent="Activado" OffContent="Desactivado" Toggled="OnSoundToggled" />
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MaxWidth="360" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider x:Name="VolumeSlider" Header="Volumen" Minimum="0" Maximum="100" StepFrequency="5"
+                                TickFrequency="25" TickPlacement="Outside" ValueChanged="OnVolumeChanged"
+                                KeyUp="OnVolumeKeyUp" />
+                        <Button x:Name="TestSoundButton" Grid.Column="1" VerticalAlignment="Bottom" Margin="0,0,0,6"
+                                Click="OnTestSound">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE768;" FontSize="12" />
+                                <TextBlock Text="Probar" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="SoundStatus" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7"
+                               Visibility="Collapsed" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="Atajo de pausa, espera de prefijos y exclusiones por aplicación llegan en H4.3."
                        Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" Margin="0,16,0,0" />
         </StackPanel>
     </ScrollViewer>
