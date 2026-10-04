@@ -211,7 +211,16 @@ internal sealed partial class MenuPopup : Window
     {
         var wasVisible = AppWindow.IsVisible;
         AppWindow.MoveAndResize(bounds);
+        if (AppWindow.Position.X != bounds.X || AppWindow.Position.Y != bounds.Y
+            || AppWindow.Size.Width != bounds.Width || AppWindow.Size.Height != bounds.Height)
+        {
+            // Crossing to a monitor with another DPI: Windows rescaled the size we had already computed for that
+            // monitor (125 % twice = empty space under the rows). Now the window has the new DPI: apply it again.
+            AppWindow.MoveAndResize(bounds);
+        }
+
         AppWindow.Show(activateWindow: false);
+        PopupInterop.BringToTopmost(Hwnd);
         if (!wasVisible)
         {
             PlayEntrance(); // entering a subgroup re-presents an open menu: no second entrance

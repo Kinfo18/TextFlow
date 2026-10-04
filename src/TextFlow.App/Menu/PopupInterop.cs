@@ -24,6 +24,23 @@ internal static unsafe partial class PopupInterop
     private static nint NoActivateProc(nint hwnd, uint message, nint wParam, nint lParam, nuint id, nuint data) =>
         message == WmMouseActivate ? MaNoActivate : DefSubclassProc(hwnd, message, wParam, lParam);
 
+    /// <summary>
+    /// Puts the popup above every non-topmost window without activating it. The presenter's IsAlwaysOnTop never set
+    /// WS_EX_TOPMOST here, so a maximized Word could cover the menu (2026-10-04): enforce it on every show.
+    /// </summary>
+    public static void BringToTopmost(nint hwnd) =>
+        SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate | SwpNoOwnerZOrder);
+
+    private static readonly nint HwndTopmost = -1;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoOwnerZOrder = 0x0200;
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(nint hwnd, nint insertAfter, int x, int y, int cx, int cy, uint flags);
+
     /// <summary>Window DPI as a scale factor (1.25 at 125 %); 1 when Windows cannot tell.</summary>
     public static double DpiScale(nint hwnd) => GetDpiForWindow(hwnd) is var dpi and > 0 ? dpi / 96.0 : 1.0;
 
