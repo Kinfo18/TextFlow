@@ -9,6 +9,9 @@ public interface IFocusedControlInspector
 {
     /// <summary>Returns metadata of the focused element if it belongs to <paramref name="expectedProcessId"/>.</summary>
     FocusedControlInfo? Inspect(uint expectedProcessId);
+
+    /// <summary>Caret rectangle of the focused text in <paramref name="expectedProcessId"/>, from UIA text ranges (H4.4).</summary>
+    PixelRect? LocateCaret(uint expectedProcessId);
 }
 
 /// <summary>
@@ -33,33 +36,42 @@ public sealed class UiaFocusedControlInspector : IFocusedControlInspector, IDisp
         };
     }
 
-    public FocusedControlInfo? Inspect(uint expectedProcessId)
+    public FocusedControlInfo? Inspect(uint expectedProcessId) => TimeBoxed(() => InspectCore(expectedProcessId));
+
+    /// <summary>Separate call with its own time box, so a slow text provider never costs the password check.</summary>
+    public PixelRect? LocateCaret(uint expectedProcessId) =>
+        TimeBoxed(() => FocusedElementOf(expectedProcessId) is { } element ? UiaCaretReader.Read(element) : null);
+
+    private T? TimeBoxed<T>(Func<T?> read)
     {
-        var task = Task.Run(() => InspectCore(expectedProcessId));
+        var task = Task.Run(read);
         try
         {
-            return task.Wait(_timeout) ? task.Result : null;
+            return task.Wait(_timeout) ? task.Result : default;
         }
         catch (AggregateException)
         {
-            return null; // UIA provider errors are expected on some apps; metadata is best-effort.
+            return default; // UIA provider errors are expected on some apps; metadata is best-effort.
         }
+    }
+
+    private AutomationElement? FocusedElementOf(uint expectedProcessId)
+    {
+        var element = _automation.FocusedElement();
+        return element is not null && element.Properties.ProcessId.TryGetValue(out var pid) && pid == expectedProcessId
+            ? element
+            : null; // focus moved to another process between Win32 and UIA reads
     }
 
     private FocusedControlInfo? InspectCore(uint expectedProcessId)
     {
-        var element = _automation.FocusedElement();
+        var element = FocusedElementOf(expectedProcessId);
         if (element is null)
         {
             return null;
         }
 
         var props = element.Properties;
-        if (!props.ProcessId.TryGetValue(out var pid) || pid != expectedProcessId)
-        {
-            return null; // focus moved to another process between Win32 and UIA reads
-        }
-
         return new FocusedControlInfo(
             ControlType: props.ControlType.ValueOrDefault.ToString(),
             ClassName: props.ClassName.ValueOrDefault ?? string.Empty,

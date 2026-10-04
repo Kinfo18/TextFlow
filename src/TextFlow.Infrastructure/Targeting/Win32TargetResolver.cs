@@ -53,6 +53,10 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         var control = processId == (uint)Environment.ProcessId
             ? FocusedControlInfo.Unknown
             : _controlInspector.Inspect(processId) ?? FocusedControlInfo.Unknown;
+        if (caret is null && processId != (uint)Environment.ProcessId)
+        {
+            caret = _controlInspector.LocateCaret(processId); // Chrome & co. draw their own caret (H4.4)
+        }
 
         return new ActiveTarget(
             WindowHandle: (nint)window.Value,
