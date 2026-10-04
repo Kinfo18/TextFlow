@@ -20,14 +20,14 @@ public sealed class ExpansionEngine
 {
     private readonly IInputHook _hook;
     private readonly ITargetResolver _resolver;
-    private readonly SecurityPolicy _policy;
+    private SecurityPolicy _policy; // replaced from Configuración (H4.3): read with Volatile
     private readonly ITextInsertionService _insertion;
     private readonly IMenuPresenter _menu;
     private readonly IExpansionFeedback _feedback;
     private readonly IPointerLocator _pointer;
     private readonly IDiagnosticSink _sink;
     private readonly TimeProvider _time;
-    private readonly ExpansionEngineOptions _options;
+    private ExpansionEngineOptions _options; // pending timeout changes from Configuración (H4.3)
     private readonly Channel<EngineWork> _inbox = Channel.CreateUnbounded<EngineWork>(new UnboundedChannelOptions { SingleReader = true });
     private readonly List<Barrier> _barriers = [];
 
@@ -64,6 +64,27 @@ public sealed class ExpansionEngine
     }
 
     public bool IsPaused => _paused;
+
+    /// <summary>Shortest and longest wait for an ambiguous trigger that Configuración allows.</summary>
+    public static readonly TimeSpan MinPendingTimeout = TimeSpan.FromMilliseconds(100);
+
+    /// <inheritdoc cref="MinPendingTimeout"/>
+    public static readonly TimeSpan MaxPendingTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Applies to the next ambiguous trigger (any thread).</summary>
+    public void SetPendingTimeout(TimeSpan timeout)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(timeout, MinPendingTimeout);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(timeout, MaxPendingTimeout);
+        Volatile.Write(ref _options, Volatile.Read(ref _options) with { PendingTimeout = timeout });
+    }
+
+    /// <summary>Replaces the exclusion rules; the next trigger is judged by them (any thread).</summary>
+    public void UsePolicy(SecurityPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        Volatile.Write(ref _policy, policy);
+    }
 
     /// <summary>Installs a library (startup or hot reload). Triggers of the previous one stop firing.</summary>
     public async Task LoadAsync(LibraryIndex index)
@@ -226,7 +247,7 @@ public sealed class ExpansionEngine
 
         _pendingTimer?.Dispose();
         _pendingTimer = _time.CreateTimer(
-            _ => _inbox.Writer.TryWrite(new PendingElapsed(pending.Version)), null, _options.PendingTimeout, Timeout.InfiniteTimeSpan);
+            _ => _inbox.Writer.TryWrite(new PendingElapsed(pending.Version)), null, Volatile.Read(ref _options).PendingTimeout, Timeout.InfiniteTimeSpan);
         return Task.CompletedTask;
     }
 
@@ -278,7 +299,7 @@ public sealed class ExpansionEngine
             return RejectionReason.WindowChanged;
         }
 
-        return _policy.Evaluate(target, TextFlowFeature.Expansion).IsAllowed ? null : RejectionReason.PolicyDenied;
+        return Volatile.Read(ref _policy).Evaluate(target, TextFlowFeature.Expansion).IsAllowed ? null : RejectionReason.PolicyDenied;
     }
 
     private async Task ExpandSnippetAsync(ActiveTarget target, MenuSnippetEntry snippet, TriggerMatch match)
@@ -412,7 +433,7 @@ public sealed class ExpansionEngine
         }
 
         var target = await CaptureTargetAsync().ConfigureAwait(false);
-        if (target is not null && _policy.Evaluate(target, TextFlowFeature.Expansion).IsAllowed)
+        if (target is not null && Volatile.Read(ref _policy).Evaluate(target, TextFlowFeature.Expansion).IsAllowed)
         {
             _hook.TryEnableCapture(focusVersion);
         }

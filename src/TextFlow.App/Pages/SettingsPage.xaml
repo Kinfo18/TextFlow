@@ -53,8 +53,64 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="Atajo de pausa, espera de prefijos y exclusiones por aplicación llegan en H4.3."
-                       Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" Margin="0,16,0,0" />
+            <TextBlock Text="Atajo y tiempos" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
+            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Pausar o reanudar TextFlow" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border x:Name="HotkeyBox" MinWidth="200" Padding="12,6" CornerRadius="6" BorderThickness="1"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                <TextBlock x:Name="HotkeyText" FontFamily="Consolas" VerticalAlignment="Center" />
+                            </Border>
+                            <Button x:Name="RecordHotkeyButton" Content="Cambiar" Click="OnRecordHotkey" />
+                            <Button x:Name="ResetHotkeyButton" Content="Restablecer" Click="OnResetHotkey" />
+                        </StackPanel>
+                        <TextBlock x:Name="HotkeyStatus" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8"
+                                   TextWrapping="Wrap" Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <Slider x:Name="PrefixSlider" MaxWidth="360" HorizontalAlignment="Left" Width="360"
+                                Minimum="200" Maximum="2000" StepFrequency="100" TickFrequency="300" TickPlacement="Outside"
+                                ValueChanged="OnPrefixChanged">
+                            <Slider.Header>
+                                <TextBlock x:Name="PrefixHeader" />
+                            </Slider.Header>
+                        </Slider>
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" MaxWidth="560"
+                                   HorizontalAlignment="Left"
+                                   Text="Cuando una abreviatura es el principio de otra (dir1 y dir12), TextFlow espera este tiempo por si sigues escribiendo antes de expandir la corta." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="Exclusiones por aplicación" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
+            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="TextFlow no expande abreviaturas ni abre menús en estas aplicaciones." TextWrapping="Wrap" />
+                    <StackPanel x:Name="ExclusionList" Spacing="4" />
+                    <TextBlock x:Name="NoExclusions" Text="Ninguna todavía." Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBox x:Name="ExclusionInput" Width="220" PlaceholderText="programa.exe" KeyDown="OnExclusionInputKeyDown" />
+                        <Button Content="Agregar" Click="OnAddExclusion" />
+                        <DropDownButton Content="Apps abiertas">
+                            <DropDownButton.Flyout>
+                                <MenuFlyout x:Name="RunningAppsFlyout" Placement="Bottom" Opening="OnRunningAppsOpening" />
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                    </StackPanel>
+                    <TextBlock x:Name="ExclusionStatus" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8"
+                               TextWrapping="Wrap" Visibility="Collapsed" />
+                    <Expander Header="Exclusiones integradas (siempre activas)" HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Left">
+                        <TextBlock x:Name="BuiltinList" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8" />
+                    </Expander>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Page>

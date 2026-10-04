@@ -66,6 +66,10 @@ public partial class App : Application, IDisposable
 
     internal double ChimeVolume => _settings.ChimeVolume;
 
+    internal int PrefixTimeoutMs => (int)EngineHost.PendingTimeout(_settings.PrefixTimeoutMs).TotalMilliseconds;
+
+    internal IReadOnlyList<string> ExcludedProcesses => _settings.ExcludedProcesses ?? [];
+
     internal bool StartsWithWindows => _startup?.IsEnabled ?? false;
 
     /// <summary>Owner window for file pickers and dialogs.</summary>
@@ -90,6 +94,45 @@ public partial class App : Application, IDisposable
     internal bool PlayChime() => _engine?.PlayChime() ?? false;
 
     internal void WarmSound() => _engine?.WarmSound();
+
+    internal void SetPrefixTimeout(int milliseconds)
+    {
+        _settings = _settings with { PrefixTimeoutMs = milliseconds };
+        SaveSettings();
+        _engine?.SetPendingTimeout(milliseconds);
+    }
+
+    internal void SetExcludedProcesses(IReadOnlyList<string> processes)
+    {
+        _settings = _settings with { ExcludedProcesses = processes };
+        SaveSettings();
+        _engine?.SetExclusions(processes);
+    }
+
+    /// <summary>
+    /// Swaps the global pause shortcut. If Windows refuses the new one (another app owns it) the previous one is
+    /// registered again and nothing is saved.
+    /// </summary>
+    /// <returns>False when the new shortcut could not be registered.</returns>
+    internal bool SetPauseHotkey(HotkeyGesture gesture)
+    {
+        if (_ui is null || _tray is null)
+        {
+            return false;
+        }
+
+        var previous = _pauseHotkey?.Gesture ?? HotkeyGesture.DefaultPause;
+        if (TryUsePauseHotkey(gesture, _ui, _tray))
+        {
+            _settings = _settings with { PauseHotkey = gesture.ToString() };
+            SaveSettings();
+            _window?.Refresh();
+            return true;
+        }
+
+        TryUsePauseHotkey(previous, _ui, _tray);
+        return false;
+    }
 
     internal void SetStartWithWindows(bool enabled)
     {
@@ -165,7 +208,7 @@ public partial class App : Application, IDisposable
         _library = new LibraryHost(paths, sink);
         var library = await _library.InitializeAsync(_settings.ATextBackupPath, CancellationToken.None);
 
-        _engine = new EngineHost(_settings.SoundEnabled, _settings.ChimeVolume, new WinUiMenuPresenter(ui, popup), sink);
+        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), sink);
         await _engine.StartAsync(library);
 
         // Every import or edit re-indexes the engine at once (H2.2), and the window shows the new counts.
@@ -193,6 +236,14 @@ public partial class App : Application, IDisposable
     private void StartPauseHotkey(DispatcherQueue ui, TrayIcon tray)
     {
         var gesture = HotkeyGesture.TryParse(_settings.PauseHotkey, out var configured) ? configured! : HotkeyGesture.DefaultPause;
+        TryUsePauseHotkey(gesture, ui, tray);
+    }
+
+    /// <summary>Replaces the current shortcut with <paramref name="gesture"/>; false if Windows did not give it to TextFlow.</summary>
+    private bool TryUsePauseHotkey(HotkeyGesture gesture, DispatcherQueue ui, TrayIcon tray)
+    {
+        _pauseHotkey?.Dispose();
+        _pauseHotkey = null;
         try
         {
             _pauseHotkey = new GlobalHotkey(gesture);
@@ -201,7 +252,7 @@ public partial class App : Application, IDisposable
         {
             RecordFault(ex);
             tray.SetPauseShortcut(null);
-            return;
+            return false;
         }
 
         _pauseHotkey.Pressed += () => ui.TryEnqueue(() =>
@@ -212,6 +263,7 @@ public partial class App : Application, IDisposable
             }
         });
         tray.SetPauseShortcut(_pauseHotkey.IsRegistered ? gesture.ToString() : null);
+        return _pauseHotkey.IsRegistered;
     }
 
     /// <summary>Syncs the Run entry (also repairs its path if the app moved) and the tray check mark.</summary>

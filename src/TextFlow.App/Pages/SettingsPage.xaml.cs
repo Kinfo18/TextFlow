@@ -6,7 +6,10 @@ using Windows.System;
 
 namespace TextFlow.App.Pages;
 
-/// <summary>Configuración: theme, start with Windows (H3.1) and the expansion chime (H4.2); hotkey and exclusions come in H4.3.</summary>
+/// <summary>
+/// Configuración: theme, start with Windows (H3.1), the expansion chime (H4.2), pause shortcut, prefix wait and
+/// per-app exclusions (H4.3, in the partial files next to this one).
+/// </summary>
 public sealed partial class SettingsPage : Page
 {
     private const double SliderScale = 100; // the slider shows 0-100, settings keep 0-1
@@ -26,6 +29,10 @@ public sealed partial class SettingsPage : Page
         SoundSwitch.IsOn = App.Current.SoundEnabled;
         VolumeSlider.Value = Math.Round(App.Current.ChimeVolume * SliderScale);
         UpdateSoundControls();
+        LoadHotkey();
+        PrefixSlider.Value = App.Current.PrefixTimeoutMs;
+        UpdatePrefixHeader();
+        LoadExclusions();
         _loading = false;
     }
 

@@ -31,8 +31,13 @@ public sealed class EngineHost : IAsyncDisposable
     private Task? _run;
     private bool _disposed;
 
-    public EngineHost(bool soundEnabled, double chimeVolume, IMenuPresenter menu, IDiagnosticSink sink)
+    private static readonly string SelfProcess = Path.GetFileName(Environment.ProcessPath) ?? "TextFlow.exe";
+
+    public EngineHost(AppSettings settings, IMenuPresenter menu, IDiagnosticSink sink)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+        var soundEnabled = settings.SoundEnabled;
+        var chimeVolume = settings.ChimeVolume;
         _sink = sink;
         _sound = new ExpansionSound(chimeVolume) { Enabled = soundEnabled };
         var resolver = new Win32TargetResolver(new UiaFocusedControlInspector());
@@ -41,14 +46,14 @@ public sealed class EngineHost : IAsyncDisposable
         _engine = new ExpansionEngine(
             _hook,
             resolver,
-            new SecurityPolicy(BuiltinExclusions.For(Path.GetFileName(Environment.ProcessPath) ?? "TextFlow.exe")),
+            Policy(settings.ExcludedProcesses ?? []),
             new InsertionCoordinator(resolver, [_clipboard, new SendInputStrategy()], new InsertionOptions()),
             menu,
             _sound,
             new CursorPointerLocator(),
             sink,
             TimeProvider.System,
-            ExpansionEngineOptions.Default);
+            ExpansionEngineOptions.Default with { PendingTimeout = PendingTimeout(settings.PrefixTimeoutMs) });
         _watchdog = new HookWatchdog(_hook, InputProbe.LastInputTick, InputProbe.ForegroundBlocksHooks, TimeProvider.System, HookWatchdogOptions.Default);
         _watchdog.Reinstalled += info =>
         {
@@ -75,6 +80,19 @@ public sealed class EngineHost : IAsyncDisposable
 
     /// <summary>Installs a new library at once (startup, import, edit): its triggers replace the previous ones.</summary>
     public Task UseLibraryAsync(LibraryGroup library) => _engine.LoadAsync(LibraryIndex.Build(library));
+
+    /// <summary>Clamps a stored value into the range the engine accepts (settings.json may be edited by hand).</summary>
+    public static TimeSpan PendingTimeout(int milliseconds) =>
+        TimeSpan.FromMilliseconds(Math.Clamp(
+            milliseconds, ExpansionEngine.MinPendingTimeout.TotalMilliseconds, ExpansionEngine.MaxPendingTimeout.TotalMilliseconds));
+
+    public void SetPendingTimeout(int milliseconds) => _engine.SetPendingTimeout(PendingTimeout(milliseconds));
+
+    /// <summary>Built-in exclusions and TextFlow itself always apply; <paramref name="processes"/> come from Configuración.</summary>
+    public void SetExclusions(IEnumerable<string> processes) => _engine.UsePolicy(Policy(processes));
+
+    private static SecurityPolicy Policy(IEnumerable<string> processes) =>
+        new([.. BuiltinExclusions.For(SelfProcess), .. UserExclusions.Rules(processes)]);
 
     /// <summary>Applies the Configuración sound choices at once (any thread).</summary>
     public void ConfigureSound(bool enabled, double volume)

@@ -271,6 +271,39 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task PendingTimeout_ChangedInSettings_AppliesToTheNextAmbiguousTrigger()
+    {
+        await StartAsync();
+        _engine.SetPendingTimeout(TimeSpan.FromMilliseconds(200));
+
+        await TypeAsync(new TriggerPending(Match("dir1"), 3, FakeResolver.Window));
+        _time.Advance(TimeSpan.FromMilliseconds(200));
+        await SettleAsync();
+
+        Assert.Equal([3], _hook.Flushed);
+    }
+
+    [Theory]
+    [InlineData(50)]
+    [InlineData(10_000)]
+    public void PendingTimeout_OutsideTheSupportedRange_IsRejected(int ms)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => _engine.SetPendingTimeout(TimeSpan.FromMilliseconds(ms)));
+    }
+
+    [Fact]
+    public async Task ExclusionAddedInSettings_StopsExpansionInThatApp()
+    {
+        await StartAsync();
+        _engine.UsePolicy(new SecurityPolicy([.. BuiltinExclusions.All, .. UserExclusions.Rules(["notepad.exe"])]));
+
+        await TypeAsync(new TriggerTyped(Match("cc"), FakeResolver.Window));
+
+        Assert.Empty(_insertion.Requests);
+        Assert.Contains(_sink.Events, e => e is TargetRejected { Reason: RejectionReason.PolicyDenied });
+    }
+
+    [Fact]
     public async Task PendingSnippetTrigger_IsFlushedAfterTimeout()
     {
         await StartAsync();

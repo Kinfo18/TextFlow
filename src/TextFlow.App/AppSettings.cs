@@ -10,6 +10,8 @@ namespace TextFlow.App;
 /// <param name="ATextBackupPath">aText backup loaded as the library (H1.5, provisional until the importer in H2).</param>
 /// <param name="ChimeVolume">0-1.</param>
 /// <param name="SoundEnabled">Expansion chime on/off (H4.2); the volume is kept while it is off.</param>
+/// <param name="PrefixTimeoutMs">Wait for an ambiguous trigger such as "dir1" while "dir12" exists (H4.3).</param>
+/// <param name="ExcludedProcesses">Apps where TextFlow never expands, e.g. "chrome.exe" (H4.3); null means none.</param>
 /// <param name="StartWithWindows">Kept in sync with the HKCU Run entry at every start (H1.3).</param>
 /// <param name="PauseHotkey">Global pause/resume shortcut, e.g. "Ctrl+Shift+Alt+P" (H1.4); null or invalid uses the default.</param>
 /// <param name="Theme">Window theme (H3.1).</param>
@@ -19,7 +21,9 @@ public sealed record AppSettings(
     bool StartWithWindows = true,
     string? PauseHotkey = null,
     AppTheme Theme = AppTheme.System,
-    bool SoundEnabled = true)
+    bool SoundEnabled = true,
+    int PrefixTimeoutMs = 600,
+    IReadOnlyList<string>? ExcludedProcesses = null)
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 

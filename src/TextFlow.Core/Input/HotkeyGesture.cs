@@ -27,6 +27,13 @@ public sealed record HotkeyGesture(HotkeyModifiers Modifiers, uint VirtualKey)
     /// <summary>Default pause/resume shortcut (H1.4). Not Ctrl+Alt+letter: that is AltGr on Spanish keyboards.</summary>
     public static HotkeyGesture DefaultPause { get; } = new(HotkeyModifiers.Control | HotkeyModifiers.Shift | HotkeyModifiers.Alt, 'P');
 
+    /// <summary>
+    /// Ctrl+Alt (no Shift or Win) plus a letter or digit is what AltGr sends: registering it would stop the user typing
+    /// characters such as @ (AltGr+2 / AltGr+Q) in every app. Configuración refuses these gestures.
+    /// </summary>
+    public bool OverlapsAltGr =>
+        Modifiers == (HotkeyModifiers.Control | HotkeyModifiers.Alt) && VirtualKey is >= 'A' and <= 'Z' or >= '0' and <= '9';
+
     public static bool TryParse(string? text, out HotkeyGesture? gesture)
     {
         gesture = null;

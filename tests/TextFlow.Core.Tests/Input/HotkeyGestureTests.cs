@@ -46,4 +46,18 @@ public sealed class HotkeyGestureTests
         Assert.True(HotkeyGesture.TryParse("Ctrl+Alt+Pause", out var pause));
         Assert.Equal(0x13u, pause!.VirtualKey);
     }
+
+    [Theory]
+    [InlineData("Ctrl+Alt+Q", true)]   // AltGr+Q = @ on a Spanish keyboard
+    [InlineData("Ctrl+Alt+2", true)]
+    [InlineData("Ctrl+Shift+Alt+P", false)]
+    [InlineData("Ctrl+Alt+F5", false)]
+    [InlineData("Ctrl+Alt+Pause", false)]
+    [InlineData("Win+Alt+Q", false)]
+    [InlineData("Ctrl+Shift+P", false)]
+    public void OverlapsAltGr_WhenItIsCtrlAltPlusACharacterKey(string text, bool expected)
+    {
+        Assert.True(HotkeyGesture.TryParse(text, out var gesture));
+        Assert.Equal(expected, gesture!.OverlapsAltGr);
+    }
 }
