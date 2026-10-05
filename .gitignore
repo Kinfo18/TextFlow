@@ -16,3 +16,6 @@ models/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Portable builds for other PCs
+dist/
