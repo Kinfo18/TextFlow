@@ -12,13 +12,14 @@ using TextFlow.Core.Library;
 
 namespace TextFlow.Core.Tests.Engine;
 
-public sealed class ExpansionEngineTests : IAsyncDisposable
+public sealed partial class ExpansionEngineTests : IAsyncDisposable
 {
     private readonly FakeHook _hook = new();
     private readonly FakeResolver _resolver = new();
     private readonly FakeInsertion _insertion = new();
     private readonly FakeMenu _menu = new();
     private readonly FakeFeedback _feedback = new();
+    private readonly FakeFieldPrompt _fields = new();
     private readonly ListSink _sink = new();
     private readonly FakeTimeProvider _time = new();
     private readonly CancellationTokenSource _cts = new();
@@ -33,12 +34,18 @@ public sealed class ExpansionEngineTests : IAsyncDisposable
                 new LibraryGroup("g-lc", "Local cerrado", "LC", true, [], [Snippet("s-nc", "No confirmado", "texto nc")]),
                 new LibraryGroup("g-cp", "Completa pasos", "cp", true, [], [Snippet("s-cp1", "cp1", "texto cp1")]),
                 new LibraryGroup("g-t1", "Temples", null, true, [], [Snippet("s-cc", "cc", "texto cc"), Snippet("s-dir1", "dir1", "d1"), Snippet("s-dir12", "dir12", "d12")]),
+                new LibraryGroup("g-tpl", "Plantillas", null, true, [],
+                [
+                    Snippet("s-s1", "s1", "Hola, {{cliente}} ¡un gusto!"),
+                    Snippet("s-frec", "frec1", "{{cliente}}: {{mes}}/{{año}} {{monto}} ({{cliente}})"),
+                    Snippet("s-fecha", "fecha", "Año {{date:yyyy}} {{cursor}}fin"),
+                ]),
             ],
             []);
         _index = LibraryIndex.Build(root);
         _engine = new ExpansionEngine(
             _hook, _resolver, new SecurityPolicy(BuiltinExclusions.All), _insertion, _menu, _feedback, new FakePointer(),
-            _sink, _time, ExpansionEngineOptions.Default);
+            _sink, _time, ExpansionEngineOptions.Default, _fields, new FakeVariables(_time));
     }
 
     private static LibrarySnippet Snippet(string id, string abbreviation, string content) =>

@@ -6,6 +6,7 @@ using TextFlow.Core.Expansion;
 using TextFlow.Core.Input;
 using TextFlow.Core.Menus;
 using TextFlow.Core.Security;
+using TextFlow.Core.Templates;
 
 namespace TextFlow.Core.Engine;
 
@@ -16,7 +17,7 @@ namespace TextFlow.Core.Engine;
 /// overtaken by an older timeout.
 /// </summary>
 /// <remarks>Fails closed: capture is off while paused, in excluded apps, without a target and after the loop stops.</remarks>
-public sealed class ExpansionEngine
+public sealed partial class ExpansionEngine
 {
     private readonly IInputHook _hook;
     private readonly ITargetResolver _resolver;
@@ -24,6 +25,8 @@ public sealed class ExpansionEngine
     private readonly ITextInsertionService _insertion;
     private readonly IMenuPresenter _menu;
     private readonly IExpansionFeedback _feedback;
+    private readonly IFieldPrompt? _fieldPrompt;
+    private readonly IVariableSource _variables;
     private readonly IPointerLocator _pointer;
     private readonly IDiagnosticSink _sink;
     private readonly TimeProvider _time;
@@ -49,7 +52,9 @@ public sealed class ExpansionEngine
         IPointerLocator pointerLocator,
         IDiagnosticSink sink,
         TimeProvider time,
-        ExpansionEngineOptions options)
+        ExpansionEngineOptions options,
+        IFieldPrompt? fieldPrompt = null,
+        IVariableSource? variables = null)
     {
         _hook = hook;
         _resolver = resolver;
@@ -61,6 +66,8 @@ public sealed class ExpansionEngine
         _sink = sink;
         _time = time;
         _options = options;
+        _fieldPrompt = fieldPrompt;
+        _variables = variables ?? new ClockVariables(time);
     }
 
     public bool IsPaused => _paused;
@@ -124,6 +131,11 @@ public sealed class ExpansionEngine
     {
         _stopping = ct;
         _menu.Finished += OnMenuFinished;
+        if (_fieldPrompt is not null)
+        {
+            _fieldPrompt.Finished += OnFieldsFinished;
+        }
+
         try
         {
             Record(new EngineStateChanged(Now, EngineState.Starting));
@@ -222,10 +234,13 @@ public sealed class ExpansionEngine
         TriggerTyped typed => HandleTriggerAsync(typed.Match, typed.ForegroundWindow),
         MenuKeyPressed key when _open is not null => SendToMenu(key.Input),
         MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
+        ForegroundChanged or FocusChanged when _waiting is not null => FocusMovedWhileWaitingAsync((HookEvent)work),
         ForegroundChanged => HandleForegroundChangedAsync(),
         FocusChanged when _open is null => RefreshCaptureUnlessSupersededAsync(),
         TypingActivity => WarmFeedback(),
         MenuFinished finished when _open?.Session == finished.Session => FinishMenuAsync(finished.Step),
+        FieldsFinished fields => FinishFieldsAsync(fields),
+        WaitElapsed elapsed => GiveUpWaitingAsync(elapsed),
         PendingElapsed elapsed => _hook.FlushPendingAsync(elapsed.Version),
         PauseChanged change => ApplyPauseAsync(change.Paused),
         _ => Task.CompletedTask, // stale menu result, or menu input with no menu
@@ -306,8 +321,8 @@ public sealed class ExpansionEngine
     {
         // A pending trigger broken by another key carries that key as Delimiter: type it after the expansion.
         var trailing = match.Delimiter is { } key and not ('\r' or '\t') ? key.ToString() : string.Empty;
-        var result = await ExpandAsync(target, snippet.Content + trailing, match.Backspaces, fromMenu: false).ConfigureAwait(false);
-        if (!result.Succeeded && !result.InputSent)
+        var result = await ExpandContentAsync(target, snippet.Content, match.Backspaces, trailing, fromMenu: false).ConfigureAwait(false);
+        if (result is { Succeeded: false, InputSent: false })
         {
             await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false);
         }
@@ -368,7 +383,7 @@ public sealed class ExpansionEngine
 
         if (step.Chosen is { } snippet && !_paused)
         {
-            await ExpandAsync(open.Target, snippet.Content, open.Match.Backspaces, fromMenu: true).ConfigureAwait(false);
+            await ExpandContentAsync(open.Target, snippet.Content, open.Match.Backspaces, string.Empty, fromMenu: true).ConfigureAwait(false);
         }
     }
 
@@ -459,7 +474,7 @@ public sealed class ExpansionEngine
         }
     }
 
-    private async Task<InsertionResult> ExpandAsync(ActiveTarget target, string text, int backspaces, bool fromMenu)
+    private async Task<InsertionResult> ExpandAsync(ActiveTarget target, string text, int backspaces, bool fromMenu, int caretOffset = 0)
     {
         // Chime the moment the text lands, not after the clipboard restore (~250 ms later): it must feel instant.
         var delivered = 0;
@@ -472,7 +487,7 @@ public sealed class ExpansionEngine
             }
         }
 
-        var result = await _insertion.InsertAsync(new InsertionRequest(target, text, backspaces, Delivered: OnDelivered), _stopping).ConfigureAwait(false);
+        var result = await _insertion.InsertAsync(new InsertionRequest(target, text, backspaces, CaretOffsetFromEnd: caretOffset, Delivered: OnDelivered), _stopping).ConfigureAwait(false);
         if (result.Succeeded)
         {
             OnDelivered(); // a strategy that does not report delivery
@@ -501,8 +516,14 @@ public sealed class ExpansionEngine
     private void Shutdown()
     {
         _menu.Finished -= OnMenuFinished;
+        if (_fieldPrompt is not null)
+        {
+            _fieldPrompt.Finished -= OnFieldsFinished;
+        }
+
         DisposePendingTimer();
         CancelMenu(reason: null);
+        CancelFields(FieldsCloseReason.Replaced);
         _hook.CaptureEnabled = false;
         Record(new EngineStateChanged(Now, EngineState.Stopped));
 

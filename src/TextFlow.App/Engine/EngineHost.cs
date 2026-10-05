@@ -33,7 +33,7 @@ public sealed class EngineHost : IAsyncDisposable
 
     private static readonly string SelfProcess = Path.GetFileName(Environment.ProcessPath) ?? "TextFlow.exe";
 
-    public EngineHost(AppSettings settings, IMenuPresenter menu, IDiagnosticSink sink)
+    public EngineHost(AppSettings settings, IMenuPresenter menu, IFieldPrompt fieldPrompt, IDiagnosticSink sink)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var soundEnabled = settings.SoundEnabled;
@@ -53,7 +53,8 @@ public sealed class EngineHost : IAsyncDisposable
             new CursorPointerLocator(),
             sink,
             TimeProvider.System,
-            ExpansionEngineOptions.Default with { PendingTimeout = PendingTimeout(settings.PrefixTimeoutMs) });
+            ExpansionEngineOptions.Default with { PendingTimeout = PendingTimeout(settings.PrefixTimeoutMs) },
+            fieldPrompt);
         _watchdog = new HookWatchdog(_hook, InputProbe.LastInputTick, InputProbe.ForegroundBlocksHooks, TimeProvider.System, HookWatchdogOptions.Default);
         _watchdog.Reinstalled += info =>
         {

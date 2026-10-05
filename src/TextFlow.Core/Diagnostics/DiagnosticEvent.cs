@@ -28,6 +28,12 @@ public sealed record MenuShown(DateTimeOffset At, [property: SafeToLog] string T
 
 public sealed record MenuClosed(DateTimeOffset At, MenuCloseReason Reason) : DiagnosticEvent(At);
 
+/// <summary>A template asked for its fields (H5.2). Field names are user content: only their number is kept.</summary>
+public sealed record FieldsShown(DateTimeOffset At, [property: SafeToLog] string TargetProcess, int FieldCount, bool AnchoredToCaret)
+    : DiagnosticEvent(At);
+
+public sealed record FieldsClosed(DateTimeOffset At, FieldsCloseReason Reason) : DiagnosticEvent(At);
+
 public sealed record TargetRejected(DateTimeOffset At, [property: SafeToLog] string TargetProcess, RejectionReason Reason) : DiagnosticEvent(At);
 
 /// <param name="MissedInputMs">Input the hook never saw, in ms: large values mean a real removal.</param>
@@ -47,6 +53,16 @@ public sealed record LibraryLoaded(DateTimeOffset At, int Menus, int Commands, i
 
 /// <summary>An event failed and was skipped; the engine keeps running. Only the exception type, never its message.</summary>
 public sealed record EngineFault(DateTimeOffset At, [property: SafeToLog] string ExceptionType) : DiagnosticEvent(At);
+
+public enum FieldsCloseReason
+{
+    Inserted,
+    Cancelled,
+    /// <summary>The original field could not be reached again: the text was offered instead of typed elsewhere.</summary>
+    TargetLost,
+    /// <summary>Another template took over, or TextFlow was paused or stopped.</summary>
+    Replaced,
+}
 
 public enum MenuCloseReason
 {

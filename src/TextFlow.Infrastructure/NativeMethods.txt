@@ -103,3 +103,7 @@ AllowSetForegroundWindow
 RegisterHotKey
 UnregisterHotKey
 WM_HOTKEY
+IsIconic
+ShowWindow
+AttachThreadInput
+BringWindowToTop

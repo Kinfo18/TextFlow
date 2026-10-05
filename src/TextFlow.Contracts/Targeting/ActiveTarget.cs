@@ -38,13 +38,16 @@ public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom
 }
 
 /// <summary>Metadata about the focused element. Never contains its text value.</summary>
+/// <param name="ElementId">UI Automation runtime id of the focused element, when known: tells two fields of the same
+/// window apart (browser tabs share one HWND). Opaque, content-free.</param>
 public sealed record FocusedControlInfo(
     string ControlType,
     string ClassName,
     string FrameworkId,
     bool IsPassword,
     bool IsReadOnly,
-    PixelRect? CaretBounds)
+    PixelRect? CaretBounds,
+    string? ElementId = null)
 {
     public static FocusedControlInfo Unknown { get; } =
         new("Unknown", string.Empty, string.Empty, IsPassword: false, IsReadOnly: false, CaretBounds: null);

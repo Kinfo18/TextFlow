@@ -72,6 +72,46 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
             CapturedAt: _time.GetUtcNow());
     }
 
+    public bool Activate(ActiveTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        var window = new HWND((void*)target.WindowHandle);
+        if (!PInvoke.IsWindow(window))
+        {
+            return false;
+        }
+
+        if (PInvoke.IsIconic(window))
+        {
+            PInvoke.ShowWindow(window, SHOW_WINDOW_CMD.SW_RESTORE);
+        }
+
+        if (PInvoke.SetForegroundWindow(window) || PInvoke.GetForegroundWindow() == window)
+        {
+            return true;
+        }
+
+        // The user's last click was in another app (the page they copied from), so Windows' foreground lock refuses.
+        // Sharing input state with the current foreground thread for a moment is the documented way through.
+        var foreground = PInvoke.GetForegroundWindow();
+        var foregroundThread = foreground.IsNull ? 0 : PInvoke.GetWindowThreadProcessId(foreground, null);
+        var ownThread = PInvoke.GetCurrentThreadId();
+        var attached = foregroundThread != 0 && foregroundThread != ownThread && PInvoke.AttachThreadInput(ownThread, foregroundThread, true);
+        try
+        {
+            PInvoke.BringWindowToTop(window);
+            return PInvoke.SetForegroundWindow(window) || PInvoke.GetForegroundWindow() == window;
+        }
+        finally
+        {
+            if (attached)
+            {
+                PInvoke.AttachThreadInput(ownThread, foregroundThread, false);
+            }
+        }
+    }
+
     public TargetValidation ValidateTarget(ActiveTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);

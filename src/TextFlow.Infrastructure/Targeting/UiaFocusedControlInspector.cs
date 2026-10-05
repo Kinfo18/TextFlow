@@ -80,8 +80,13 @@ public sealed class UiaFocusedControlInspector : IFocusedControlInspector, IDisp
             IsPassword: props.IsPassword.ValueOrDefault
                 || SensitiveFieldHeuristic.LooksLikePassword(props.Name.ValueOrDefault, props.AutomationId.ValueOrDefault),
             IsReadOnly: IsReadOnly(element),
-            CaretBounds: null);
+            CaretBounds: null,
+            ElementId: RuntimeId(element));
     }
+
+    /// <summary>UIA runtime id ("42.1234.4.567"): stable while the element lives, different for another tab or field.</summary>
+    private static string? RuntimeId(AutomationElement element) =>
+        element.Properties.RuntimeId.TryGetValue(out var id) && id is { Length: > 0 } ? string.Join('.', id) : null;
 
     private static bool IsReadOnly(AutomationElement element) =>
         element.Patterns.Value.TryGetPattern(out var value) && value.IsReadOnly.ValueOrDefault;

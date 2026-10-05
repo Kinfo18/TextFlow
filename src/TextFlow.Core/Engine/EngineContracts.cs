@@ -1,5 +1,6 @@
 using TextFlow.Contracts.Targeting;
 using TextFlow.Core.Menus;
+using TextFlow.Core.Templates;
 
 namespace TextFlow.Core.Engine;
 
@@ -26,6 +27,30 @@ public interface IMenuPresenter
     bool Contains(int x, int y);
 }
 
+/// <summary>
+/// Asks for a template's field values (H5.2, ADR-0002 rev. 2026-10-04). Unlike the menu it takes the focus and stays
+/// open while the user goes to copy the values elsewhere; values are user content and never logged.
+/// </summary>
+public interface IFieldPrompt
+{
+    /// <summary>Raised (any thread) with the <c>session</c> given to <see cref="Show"/>: the values, or null when cancelled.</summary>
+    event Action<int, IReadOnlyDictionary<string, string>?>? Finished;
+
+    void Show(IReadOnlyList<TemplateField> fields, PixelRect anchor, MonitorInfo monitor, int session);
+
+    /// <summary>Closes without reporting (another template replaced it, or the engine stopped).</summary>
+    void Cancel();
+
+    /// <summary>The original field could not be reached again: hand <paramref name="text"/> to the user to paste.</summary>
+    void ShowNotInserted(string text);
+
+    /// <summary>
+    /// The values are in but the original field is not focused (the user is still on the page they copied from):
+    /// say that the text goes in as soon as they return. Cancelling still reports <see cref="Finished"/> with null.
+    /// </summary>
+    void ShowWaiting();
+}
+
 /// <summary>Expansion chime (ADR: own synthesized sound, user volume).</summary>
 public interface IExpansionFeedback
 {
@@ -44,7 +69,11 @@ public interface IPointerLocator
 
 /// <param name="PendingTimeout">How long an ambiguous snippet trigger ("dir1" while "dir12" exists) waits (spec revisions 2026-10-02).</param>
 /// <param name="CaptureTimeout">Longest wait for the target (UIA can hang); after it the target counts as missing.</param>
-public sealed record ExpansionEngineOptions(TimeSpan PendingTimeout, TimeSpan CaptureTimeout)
+/// <param name="FocusReturnTimeout">After a fields prompt, how long to wait for the original field to get the focus back.</param>
+/// <param name="ReturnWaitTimeout">How long filled-in fields wait for the user to go back to the original field.</param>
+public sealed record ExpansionEngineOptions(
+    TimeSpan PendingTimeout, TimeSpan CaptureTimeout, TimeSpan FocusReturnTimeout, TimeSpan ReturnWaitTimeout)
 {
-    public static ExpansionEngineOptions Default { get; } = new(TimeSpan.FromMilliseconds(600), TimeSpan.FromMilliseconds(500));
+    public static ExpansionEngineOptions Default { get; } = new(
+        TimeSpan.FromMilliseconds(600), TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(400), TimeSpan.FromMinutes(2));
 }

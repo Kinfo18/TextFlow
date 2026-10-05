@@ -6,6 +6,7 @@ using TextFlow.Core.Engine;
 using TextFlow.Core.Expansion;
 using TextFlow.Core.Input;
 using TextFlow.Core.Menus;
+using TextFlow.Core.Templates;
 
 namespace TextFlow.Core.Tests.Engine;
 
@@ -103,6 +104,16 @@ internal sealed class FakeResolver : ITargetResolver
     }
 
     public TargetValidation ValidateTarget(ActiveTarget target) => TargetValidation.Valid;
+
+    public int Activations { get; private set; }
+
+    public bool ActivateResult { get; set; } = true;
+
+    public bool Activate(ActiveTarget target)
+    {
+        Activations++;
+        return ActivateResult;
+    }
 }
 
 internal sealed class FakeInsertion : ITextInsertionService
@@ -216,4 +227,47 @@ internal sealed class ListSink : IDiagnosticSink
             _events.Add(diagnostic);
         }
     }
+}
+
+internal sealed class FakeFieldPrompt : IFieldPrompt
+{
+    public event Action<int, IReadOnlyDictionary<string, string>?>? Finished;
+
+    public IReadOnlyList<TemplateField>? Shown { get; private set; }
+
+    public PixelRect? Anchor { get; private set; }
+
+    public int Session { get; private set; }
+
+    public int Cancels { get; private set; }
+
+    public string? NotInsertedText { get; private set; }
+
+    public void Show(IReadOnlyList<TemplateField> fields, PixelRect anchor, MonitorInfo monitor, int session)
+    {
+        Shown = fields;
+        Anchor = anchor;
+        Session = session;
+    }
+
+    public void Cancel() => Cancels++;
+
+    public void ShowNotInserted(string text) => NotInsertedText = text;
+
+    public int WaitingShown { get; private set; }
+
+    public void ShowWaiting() => WaitingShown++;
+
+    public void Finish(IReadOnlyDictionary<string, string>? values) => Finished?.Invoke(Session, values);
+
+    public void Finish(IReadOnlyDictionary<string, string>? values, int session) => Finished?.Invoke(session, values);
+}
+
+internal sealed class FakeVariables(TimeProvider time) : IVariableSource
+{
+    public DateTimeOffset Now => time.GetLocalNow();
+
+    public string? GetClipboardText() => null;
+
+    public string? GetSelectionText() => null;
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using TextFlow.App.Engine;
+using TextFlow.App.Fields;
 using TextFlow.App.Menu;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Input;
@@ -25,6 +26,7 @@ public partial class App : Application, IDisposable
     private LibraryHost? _library;
     private TrayIcon? _tray;
     private MenuPopup? _popup;
+    private FieldPromptWindow? _fieldsWindow;
     private SingleInstance? _instance;
     private AppSettings _settings = new();
     private StartupRegistration? _startup;
@@ -81,6 +83,7 @@ public partial class App : Application, IDisposable
         SaveSettings();
         _window?.ApplyTheme(theme);
         _popup?.ApplyTheme(theme);
+        _fieldsWindow?.ApplyTheme(theme);
     }
 
     internal void SetSound(bool enabled, double volume)
@@ -153,7 +156,7 @@ public partial class App : Application, IDisposable
         _ui = DispatcherQueue.GetForCurrentThread();
         var background = Environment.GetCommandLineArgs().Contains(StartupRegistration.BackgroundArgument, StringComparer.OrdinalIgnoreCase);
 
-        if (MenuPreview.TryShow(Environment.GetCommandLineArgs()))
+        if (MenuPreview.TryShow(Environment.GetCommandLineArgs()) || FieldsPreview.TryShow(Environment.GetCommandLineArgs()))
         {
             return; // design preview only: no hook, no tray, no single-instance check
         }
@@ -204,11 +207,13 @@ public partial class App : Application, IDisposable
         var paths = Services.GetRequiredService<AppPaths>();
         _settings = AppSettings.Load(paths.Settings);
         popup.ApplyTheme(_settings.Theme); // after Load: before it _settings still holds the defaults
+        _fieldsWindow = new FieldPromptWindow();
+        _fieldsWindow.ApplyTheme(_settings.Theme);
         var sink = Services.GetRequiredService<IDiagnosticSink>();
         _library = new LibraryHost(paths, sink);
         var library = await _library.InitializeAsync(_settings.ATextBackupPath, CancellationToken.None);
 
-        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), sink);
+        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), new WinUiFieldPrompt(ui, _fieldsWindow), sink);
         await _engine.StartAsync(library);
 
         // Every import or edit re-indexes the engine at once (H2.2), and the window shows the new counts.

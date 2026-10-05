@@ -160,6 +160,8 @@ public class InsertionCoordinatorTests
         public ActiveTarget? CaptureTarget() => Target;
 
         public TargetValidation ValidateTarget(ActiveTarget target) => Validation;
+
+        public bool Activate(ActiveTarget target) => true;
     }
 
     private sealed class FakeStrategy(InsertionStrategyKind kind) : IInsertionStrategy
