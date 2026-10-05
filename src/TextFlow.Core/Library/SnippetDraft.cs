@@ -29,6 +29,22 @@ public sealed record SnippetDraft(
 {
     private static readonly int MaxAbbreviationLength = TriggerOptions.Default.MaxBufferLength - 1;
 
+    /// <summary>
+    /// Whether the form shows exactly what <paramref name="loaded"/> had: the editor's own line-break style does not
+    /// count as a change, so opening a command and leaving it never asks to save (2026-10-04).
+    /// </summary>
+    public bool HasSameEdits(SnippetDraft loaded)
+    {
+        ArgumentNullException.ThrowIfNull(loaded);
+        return Normalize(AbbreviationsText) == Normalize(loaded.AbbreviationsText)
+            && Name == loaded.Name
+            && Normalize(Content) == Normalize(loaded.Content)
+            && Mode == loaded.Mode
+            && Enabled == loaded.Enabled;
+    }
+
+    private static string Normalize(string text) => text.ReplaceLineEndings("\n");
+
     public static SnippetDraft New() =>
         new($"tf-{Guid.NewGuid():N}", string.Empty, string.Empty, string.Empty, IsRichText: false, SnippetMode.Immediate, Enabled: true);
 

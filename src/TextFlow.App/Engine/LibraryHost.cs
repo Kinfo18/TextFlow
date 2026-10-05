@@ -174,6 +174,9 @@ public sealed class LibraryHost : IAsyncDisposable
 
     private Task<LibraryBackup> BackupAsync(CancellationToken ct) => _backups.CreateAsync(DateTimeOffset.Now, ct);
 
+    /// <summary>Snapshot before a bulk edit (XXX conversion), restorable from Inicio like the import ones.</summary>
+    public Task<LibraryBackup> CreateBackupAsync(CancellationToken ct) => BackupAsync(ct);
+
     /// <summary>Snapshots taken before imports and restores, newest first (H2.5).</summary>
     public IReadOnlyList<LibraryBackup> ListBackups() => _backups.List();
 

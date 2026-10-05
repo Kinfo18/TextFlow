@@ -26,6 +26,13 @@ public static partial class TemplateParser
     [GeneratedRegex(@"^[\p{L}\p{N}_\-.]+$")]
     private static partial Regex NamePattern();
 
+    /// <summary>
+    /// Whether <paramref name="name"/> can name a field the user fills in: letters, digits, <c>_ - .</c>, and not a
+    /// built-in variable or <c>cursor</c> (those never ask anything).
+    /// </summary>
+    public static bool IsValidFieldName(string name) =>
+        NamePattern().IsMatch(name) && !Builtins.ContainsKey(name) && !name.Equals(CursorName, StringComparison.OrdinalIgnoreCase);
+
     public static ParsedTemplate Parse(string template)
     {
         ArgumentNullException.ThrowIfNull(template);

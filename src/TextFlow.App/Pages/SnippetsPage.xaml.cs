@@ -44,6 +44,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         GroupTree.RootNodes.Clear();
         _groups.Clear();
 
+        UpdateBlankHint();
         var rootNode = Node(Library, expanded, isRoot: true);
         GroupTree.RootNodes.Add(rootNode);
         var selected = _groups.FirstOrDefault(pair => pair.Value.Id == _selectedGroupId).Key ?? rootNode;
@@ -293,8 +294,13 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
         if (!_loadingEditor && _draft is not null)
         {
-            SetDirty(true);
-            EditorMessage.Text = string.Empty;
+            // TextChanged arrives after LoadEditor returns: compare with what was loaded instead of trusting the event.
+            var changed = !CurrentDraft().HasSameEdits(_draft);
+            SetDirty(changed);
+            if (changed)
+            {
+                EditorMessage.Text = string.Empty;
+            }
         }
     }
 

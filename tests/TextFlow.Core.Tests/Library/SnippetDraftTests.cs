@@ -82,4 +82,28 @@ public sealed class SnippetDraftTests
 
         Assert.Equal("a\rb", snippet!.Content);
     }
+
+    [Fact]
+    public void HasSameEdits_IgnoresHowTheEditorWritesLineBreaks()
+    {
+        var loaded = SnippetDraft.From(new LibrarySnippet("s-1", "Saludo", "Hola\r\nqué tal", false, ["hh", "h2"]));
+
+        // A WinUI TextBox gives "\r" line breaks back for both boxes.
+        var shown = loaded with { AbbreviationsText = "hh\rh2", Content = "Hola\rqué tal" };
+
+        Assert.True(shown.HasSameEdits(loaded));
+    }
+
+    [Theory]
+    [InlineData("Saludo", "Hola\nqué tal", true)]
+    [InlineData("Saludo 2", "Hola\nqué tal", false)]
+    [InlineData("Saludo", "Hola\nqué tal!", false)]
+    public void HasSameEdits_SeesRealChanges(string name, string content, bool same)
+    {
+        var loaded = SnippetDraft.From(new LibrarySnippet("s-1", "Saludo", "Hola\nqué tal", false, ["hh"]));
+
+        Assert.Equal(same, (loaded with { Name = name, Content = content }).HasSameEdits(loaded));
+        Assert.False((loaded with { Enabled = false }).HasSameEdits(loaded));
+        Assert.False((loaded with { Mode = SnippetMode.AfterDelimiter }).HasSameEdits(loaded));
+    }
 }
