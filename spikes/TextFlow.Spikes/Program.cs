@@ -26,6 +26,7 @@ return command switch
     "expand" => await ExpandSpike.RunAsync(),
     "import" => ImportSpike.Run(args.Skip(1).ToArray()),
     "menu" => await TextFlow.Spikes.MenuSpike.RunAsync(args.Skip(1).ToArray()),
+    "focus" => TextFlow.Spikes.FocusProbe.Run(args.Skip(1).ToArray()),
     _ => Help(),
 };
 
