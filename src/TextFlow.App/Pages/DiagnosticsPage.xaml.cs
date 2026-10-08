@@ -114,7 +114,7 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
         using var process = Process.GetCurrentProcess();
         var mb = process.WorkingSet64 / (1024.0 * 1024.0);
         MemoryValue.Text = $"{mb:0} MB";
-        MemoryValue.Foreground = mb <= MemoryTargetMb ? null : Brush("SystemFillColorCautionBrush");
+        SetValueBrush(MemoryValue, mb <= MemoryTargetMb ? null : "SystemFillColorCautionBrush");
         MemoryLabel.Text = $"Memoria ahora (objetivo < {MemoryTargetMb:0} MB)";
     }
 
@@ -122,7 +122,7 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
     {
         ExpansionsValue.Text = summary.Expansions.ToString("N0", Es);
         SuccessValue.Text = summary.SuccessRate is { } rate ? rate.ToString("P1", Es) : "—";
-        SuccessValue.Foreground = summary.SuccessRate is { } r && r < SuccessTarget ? Brush("SystemFillColorCautionBrush") : null;
+        SetValueBrush(SuccessValue, summary.SuccessRate is { } r && r < SuccessTarget ? "SystemFillColorCautionBrush" : null);
         LatencyValue.Text = Ms(summary.MedianMs);
 
         Fill(InsertionLines,
@@ -182,6 +182,19 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
         Grid.SetColumn(number, 1);
         grid.Children.Add(number);
         return grid;
+    }
+
+    /// <summary>Null goes back to the inherited color: assigning a null Foreground makes WinUI draw nothing.</summary>
+    private static void SetValueBrush(TextBlock text, string? key)
+    {
+        if (key is null)
+        {
+            text.ClearValue(TextBlock.ForegroundProperty);
+        }
+        else
+        {
+            text.Foreground = Brush(key);
+        }
     }
 
     private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using TextFlow.App.Engine;
 using TextFlow.App.Fields;
@@ -211,7 +212,11 @@ public partial class App : Application, IDisposable
             return;
         }
 
-        if (!background)
+        if (background)
+        {
+            IdleMemory.ReleaseSoon(_ui); // started with Windows: straight to the tray
+        }
+        else
         {
             ShowWindow();
         }
@@ -433,28 +438,50 @@ public partial class App : Application, IDisposable
     {
         if (_window is null)
         {
-            _window = new MainWindow();
-            _window.AppWindow.Closing += (sender, e) =>
+            var window = new MainWindow();
+            window.AppWindow.Closing += (_, e) => OnWindowClosing(window, e);
+            window.Closed += (_, _) =>
             {
-                if (_exiting)
+                // Closed, not hidden: a tray app does not need the XAML tree in memory (V0.1 idle RAM < 150 MB).
+                _window = null;
+                if (!_exiting && _ui is not null)
                 {
-                    return;
-                }
-
-                e.Cancel = true;
-                if (_tray is null)
-                {
-                    _ = ExitAsync(); // no tray to come back from
-                }
-                else
-                {
-                    sender.Hide(); // keep running in the tray
+                    IdleMemory.ReleaseSoon(_ui);
                 }
             };
+            _window = window;
         }
 
         _window.Refresh();
         _window.Activate();
+    }
+
+    /// <summary>The window closes for real (TextFlow stays in the tray), but never drops an unsaved command silently.</summary>
+    private async void OnWindowClosing(MainWindow window, AppWindowClosingEventArgs e)
+    {
+        if (_exiting || window.CloseConfirmed)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        if (_tray is null)
+        {
+            _ = ExitAsync(); // no tray to come back from
+            return;
+        }
+
+        try
+        {
+            if (await window.ConfirmCloseAsync())
+            {
+                window.Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            RecordFault(ex); // async void: an escaping exception would end the process
+        }
     }
 
     /// <summary>Always ends the process, even if a shutdown step fails (a zombie would keep the hook installed).</summary>

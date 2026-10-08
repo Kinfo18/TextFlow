@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window
     private const int MinimumHeight = 560;
 
     private string? _current;
+    private bool _confirmingClose;
 
     public MainWindow()
     {
@@ -54,6 +55,29 @@ public sealed partial class MainWindow : Window
         VersionText.Text = $"v{Updates.AppVersion.Display}";
         ApplyTheme(App.Current.Theme);
         Navigate("home");
+    }
+
+    /// <summary>Set once closing was confirmed, so the Close() that follows is not asked again.</summary>
+    public bool CloseConfirmed { get; private set; }
+
+    /// <summary>Closing destroys the pages: a modified command is saved, discarded or kept open first.</summary>
+    public async Task<bool> ConfirmCloseAsync()
+    {
+        if (_confirmingClose)
+        {
+            return false; // a second click on X while the dialog is open: WinUI allows only one ContentDialog
+        }
+
+        _confirmingClose = true;
+        try
+        {
+            CloseConfirmed = ContentHost.Content is not SnippetsPage snippets || await snippets.ConfirmLeaveAsync();
+            return CloseConfirmed;
+        }
+        finally
+        {
+            _confirmingClose = false;
+        }
     }
 
     /// <summary>Re-reads the engine state (pause, library) into the visible page.</summary>

@@ -430,7 +430,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     }
 
     /// <summary>Before leaving a modified command: save, discard or stay.</summary>
-    private async Task<bool> ConfirmLeaveAsync()
+    internal async Task<bool> ConfirmLeaveAsync()
     {
         if (!_dirty)
         {
