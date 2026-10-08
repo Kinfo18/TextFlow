@@ -1,0 +1,32 @@
+# Builds the Velopack installer and publishes it to GitHub Releases when a version tag is pushed
+# (git tag v0.1.1 && git push origin v0.1.1). Installed copies of TextFlow pick it up on their next check.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write # create the release and upload its assets
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        # Desktop tests need an interactive session (foreground window, clipboard): the runner has none.
+        run: dotnet test -c Release --filter "Category!=Desktop"
+
+      - name: Pack and publish
+        shell: pwsh
+        env:
+          TEXTFLOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./build/publish-release.ps1 -Version $env:GITHUB_REF_NAME.TrimStart('v') -Upload

@@ -16,11 +16,14 @@
 .EXAMPLE
     pwsh build\publish-release.ps1 -Version 0.1.1
     pwsh build\publish-release.ps1 -Version 0.1.1 -Upload    # needs $env:TEXTFLOW_GITHUB_TOKEN
+
+    Normally GitHub Actions runs it (.github/workflows/release.yml) when a v* tag is pushed: the dev PC's network
+    resets large uploads.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$')]
     [string]$Version,
 
     [switch]$Upload
