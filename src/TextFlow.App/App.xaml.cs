@@ -80,6 +80,9 @@ public partial class App : Application, IDisposable
 
     internal bool StartsWithWindows => _startup?.IsEnabled ?? false;
 
+    /// <summary>Null until startup finishes (and in design previews).</summary>
+    internal AppUpdater? Updater => _updater;
+
     /// <summary>Version downloaded and waiting for "Reiniciar y actualizar"; null when there is none.</summary>
     internal string? UpdateVersion => _updater?.ReadyVersion;
 

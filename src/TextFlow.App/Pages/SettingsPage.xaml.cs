@@ -33,6 +33,7 @@ public sealed partial class SettingsPage : Page
         PrefixSlider.Value = App.Current.PrefixTimeoutMs;
         UpdatePrefixHeader();
         LoadExclusions();
+        LoadAbout();
         _loading = false;
     }
 
