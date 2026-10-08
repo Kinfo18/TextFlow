@@ -18,14 +18,7 @@
         <!-- Custom title bar (ExtendsContentIntoTitleBar) -->
         <Grid x:Name="TitleBar" Padding="16,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Border Width="18" Height="18" CornerRadius="5">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#3B82F6" Offset="0" />
-                            <GradientStop Color="#8B5CF6" Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                <Image x:Name="TitleBarIcon" Width="18" Height="18" />
                 <TextBlock Text="TextFlow" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
                 <TextBlock Text="v0.1 · en desarrollo" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.55" VerticalAlignment="Center" />
             </StackPanel>

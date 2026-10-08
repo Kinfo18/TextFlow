@@ -20,6 +20,10 @@ public partial class App : Application, IDisposable
 {
     private const string InstanceName = "TextFlow";
 
+    /// <summary>App icon next to the exe (copied by the csproj); window, taskbar and tray use it.</summary>
+    internal static readonly string IconFile = Path.Combine(AppContext.BaseDirectory, "Assets", "TextFlow.ico");
+    private static readonly string PausedIconFile = Path.Combine(AppContext.BaseDirectory, "Assets", "TextFlow-paused.ico");
+
     private readonly IHost _host;
     private DispatcherQueue? _ui;
     private EngineHost? _engine;
@@ -221,7 +225,7 @@ public partial class App : Application, IDisposable
         _library.Service.Changed += root => _ = ApplyLibraryAsync(engine, root);
         _library.StatusChanged += () => ui.TryEnqueue(() => _window?.Refresh());
 
-        var tray = new TrayIcon();
+        var tray = new TrayIcon(IconFile, PausedIconFile);
         tray.CommandInvoked += command => ui.TryEnqueue(() => OnTrayCommand(command));
         tray.Unavailable += () => ui.TryEnqueue(ShowWindow); // no icon: the window is the only way in
         _engine.PausedChanged += paused =>

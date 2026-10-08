@@ -1,6 +1,7 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using TextFlow.App.Pages;
 using Windows.Graphics;
 
@@ -32,6 +33,16 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
         AppWindow.Resize(new SizeInt32(1100, 720));
+        if (File.Exists(App.IconFile))
+        {
+            AppWindow.SetIcon(App.IconFile); // taskbar and Alt+Tab
+        }
+
+        var titleIcon = Path.Combine(AppContext.BaseDirectory, "Assets", "TextFlow-64.png");
+        if (File.Exists(titleIcon))
+        {
+            TitleBarIcon.Source = new BitmapImage(new Uri(titleIcon)); // the custom title bar draws its own
+        }
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             // Below this the three Snippets panes cannot all fit (tree, list and editor minimums plus margins).

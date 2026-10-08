@@ -31,6 +31,8 @@ public sealed partial class TrayIcon : IDisposable
     private const uint StartupId = 4;
 
     private readonly MessageLoopThread _thread;
+    private readonly string? _activeIconFile;
+    private readonly string? _pausedIconFile;
     private HiddenWindow? _window;
     private HICON _activeIcon;
     private HICON _pausedIcon;
@@ -44,8 +46,12 @@ public sealed partial class TrayIcon : IDisposable
     private volatile bool _added;
     private volatile bool _disposed;
 
-    public TrayIcon()
+    /// <param name="activeIconFile">.ico shown while active; drawn by <see cref="TrayIconArt"/> if null or unreadable.</param>
+    /// <param name="pausedIconFile">.ico shown while paused; same fallback.</param>
+    public TrayIcon(string? activeIconFile = null, string? pausedIconFile = null)
     {
+        _activeIconFile = activeIconFile;
+        _pausedIconFile = pausedIconFile;
         _thread = new MessageLoopThread("TextFlow.Tray");
         try
         {
@@ -86,8 +92,8 @@ public sealed partial class TrayIcon : IDisposable
     private void Create()
     {
         var size = PInvoke.GetSystemMetricsForDpi(SYSTEM_METRICS_INDEX.SM_CXSMICON, PInvoke.GetDpiForSystem());
-        _activeIcon = CreateIcon(size, paused: false);
-        _pausedIcon = CreateIcon(size, paused: true);
+        _activeIcon = LoadIcon(_activeIconFile, size) ?? CreateIcon(size, paused: false);
+        _pausedIcon = LoadIcon(_pausedIconFile, size) ?? CreateIcon(size, paused: true);
 
         _window = new HiddenWindow("Tray", messageOnly: false, (message, _, lParam) => Handle(message, lParam));
         _taskbarCreated = PInvoke.RegisterWindowMessage("TaskbarCreated");
@@ -218,6 +224,27 @@ public sealed partial class TrayIcon : IDisposable
 
     /// <summary>Off the tray thread: subscribers may block (open a window, stop the engine).</summary>
     private void Raise(TrayCommand command) => ThreadPool.QueueUserWorkItem(_ => CommandInvoked?.Invoke(command));
+
+    /// <summary>The frame of <paramref name="file"/> closest to <paramref name="size"/>; null if missing or invalid.</summary>
+    private static unsafe HICON? LoadIcon(string? file, int size)
+    {
+        if (file is null || !File.Exists(file))
+        {
+            return null;
+        }
+
+        fixed (char* path = file)
+        {
+            var handle = PInvoke.LoadImage(default, path, GDI_IMAGE_TYPE.IMAGE_ICON, size, size, IMAGE_FLAGS.LR_LOADFROMFILE);
+            if (handle.IsNull)
+            {
+                System.Diagnostics.Trace.TraceWarning($"TextFlow tray icon file not loaded (error {Marshal.GetLastPInvokeError()}), drawing it instead");
+                return null;
+            }
+
+            return new HICON(handle.Value);
+        }
+    }
 
     private static unsafe HICON CreateIcon(int size, bool paused)
     {

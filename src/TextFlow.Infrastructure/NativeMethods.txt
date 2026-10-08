@@ -90,6 +90,7 @@ PostMessage
 GetCursorPos
 CreateIconIndirect
 DestroyIcon
+LoadImage
 CreateDIBSection
 CreateBitmap
 DeleteObject

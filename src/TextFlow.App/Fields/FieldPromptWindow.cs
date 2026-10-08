@@ -91,6 +91,11 @@ internal sealed partial class FieldPromptWindow : Window
         presenter.IsMinimizable = false;
         presenter.SetBorderAndTitleBar(hasBorder: true, hasTitleBar: false);
         AppWindow.SetPresenter(presenter);
+        if (File.Exists(App.IconFile))
+        {
+            AppWindow.SetIcon(App.IconFile); // shown in Alt+Tab and the taskbar while it waits
+        }
+
         AppWindow.Closing += (_, e) =>
         {
             e.Cancel = true; // Alt+F4 means cancel, the window is reused
