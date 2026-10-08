@@ -42,7 +42,7 @@ public sealed class GroupDraftTests
     [Fact]
     public void TooLongAbbreviation_IsAnError()
     {
-        var (_, errors) = (GroupDraft.New("root") with { Name = "x", AbbreviationText = new string('a', 64) }).ToGroupInfo();
+        var (_, errors) = (GroupDraft.New("root") with { Name = "x", AbbreviationText = new string('a', GroupDraft.MaxAbbreviationLength + 1) }).ToGroupInfo();
 
         Assert.Contains(GroupDraftError.AbbreviationTooLong, errors);
     }

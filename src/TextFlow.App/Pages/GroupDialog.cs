@@ -76,7 +76,7 @@ internal static class GroupDialog
     private static string Describe(GroupDraftError error) => error switch
     {
         GroupDraftError.NameRequired => "El grupo necesita un nombre.",
-        GroupDraftError.AbbreviationTooLong => "La abreviatura es demasiado larga (máximo 63 caracteres).",
+        GroupDraftError.AbbreviationTooLong => $"La abreviatura es demasiado larga (máximo {GroupDraft.MaxAbbreviationLength} caracteres).",
         _ => "No se puede guardar.",
     };
 }

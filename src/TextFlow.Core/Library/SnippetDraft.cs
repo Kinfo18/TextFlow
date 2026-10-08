@@ -27,7 +27,7 @@ public sealed record SnippetDraft(
     SnippetMode Mode,
     bool Enabled)
 {
-    private static readonly int MaxAbbreviationLength = TriggerOptions.Default.MaxBufferLength - 1;
+    public static int MaxAbbreviationLength { get; } = TriggerOptions.Default.MaxBufferLength - 1;
 
     /// <summary>
     /// Whether the form shows exactly what <paramref name="loaded"/> had: the editor's own line-break style does not

@@ -53,7 +53,7 @@ public sealed class SnippetDraftTests
     [Fact]
     public void TooLongAbbreviation_IsAnError()
     {
-        var (_, errors) = (SnippetDraft.New() with { AbbreviationsText = new string('a', 64), Content = "x" }).ToSnippet();
+        var (_, errors) = (SnippetDraft.New() with { AbbreviationsText = new string('a', SnippetDraft.MaxAbbreviationLength + 1), Content = "x" }).ToSnippet();
 
         Assert.Contains(SnippetDraftError.AbbreviationTooLong, errors);
     }

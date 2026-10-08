@@ -441,4 +441,124 @@ public class TriggerMatcherTests
 
         Assert.Equal(expected, matcher.ContinuesPending(c));
     }
+
+    [Theory]
+    [InlineData("Dire", "cc")]
+    [InlineData("gracia", "s1")]
+    public void Forget_InsideAWord_KeepsTheNextTriggerGluedToIt(string before, string trigger)
+    {
+        var matcher = Immediate(trigger);
+        Type(matcher, before);
+
+        matcher.Forget(); // a browser focus event while typing
+
+        Assert.Null(Type(matcher, trigger));
+    }
+
+    [Fact]
+    public void Forget_AfterASpace_StillMatches()
+    {
+        var matcher = Immediate("cc");
+        Type(matcher, "hola ");
+
+        matcher.Forget();
+
+        Assert.NotNull(Type(matcher, "cc"));
+    }
+
+    [Fact]
+    public void Forget_RightAfterReset_StillMatches()
+    {
+        var matcher = Immediate("cc");
+        Type(matcher, "Dire");
+        matcher.Reset(); // a click
+
+        matcher.Forget(); // the focus event that follows it
+
+        Assert.NotNull(Type(matcher, "cc"));
+    }
+
+    [Fact]
+    public void UnseenText_BlocksTheNextTrigger_UntilAWordBreak()
+    {
+        var matcher = Immediate("cc");
+        matcher.OnUnseenText();
+
+        Assert.Null(Type(matcher, "cc"));
+        Assert.NotNull(Type(matcher, " cc"));
+    }
+
+    [Fact]
+    public void TrimmedBuffer_RemembersItWasInsideAWord()
+    {
+        var matcher = new TriggerMatcher([new TriggerDefinition("x", "ab")], Defaults with { MaxBufferLength = 4 });
+        Type(matcher, "zzzzzz\b\b\b\b");
+
+        Assert.Equal(0, matcher.BufferLength);
+        Assert.Null(Type(matcher, "ab"));
+    }
+
+    private static List<TriggerMatch> Matches(TriggerMatcher matcher, string keys) =>
+        keys.Select(matcher.OnCharacter).OfType<TriggerMatch>().ToList();
+
+    [Fact]
+    public void BrokenPendingTrigger_KeepsTheWord_SoAGluedTriggerDoesNotFire()
+    {
+        // The user's library: "dir" opens a group and also starts longer abbreviations.
+        var matcher = Immediate("dir", "dir1", "cc");
+
+        Assert.DoesNotContain(Matches(matcher, "direccion"), m => m.Trigger == "cc");
+        Assert.Single(Matches(matcher, " cc"));
+    }
+
+    [Fact]
+    public void BrokenPendingTrigger_FromASingleLetterGroup_DoesNotFireATriggerInsideTheWord()
+    {
+        var matcher = new TriggerMatcher(
+            [new TriggerDefinition("g", "g"), new TriggerDefinition("gr", "gracias1", TriggerMode.AfterDelimiter),
+             new TriggerDefinition("go", "go1"), new TriggerDefinition("s1", "s1")],
+            Defaults);
+
+        Assert.DoesNotContain(Matches(matcher, "gracias1"), m => m.Trigger == "s1");
+    }
+
+    [Fact]
+    public void PendingTriggerFiredByALetter_LeavesTheCaretInsideAWord()
+    {
+        var matcher = Immediate("dir", "dir1", "cc");
+
+        var fired = Matches(matcher, "dire");
+        Assert.Equal('e', Assert.Single(fired).Delimiter);
+        Assert.Empty(Matches(matcher, "cc"));
+    }
+
+    [Fact]
+    public void FlushPending_AfterExtraText_KeepsTheWord()
+    {
+        var matcher = Immediate("ab", "abcd", "xy");
+        Type(matcher, "abc");
+
+        Assert.Null(matcher.FlushPending(matcher.PendingVersion));
+        Assert.Empty(Matches(matcher, "xy"));
+    }
+
+    [Fact]
+    public void CancelPending_KeepsTheTypedText()
+    {
+        var matcher = Immediate("g", "go1", "cc");
+        Type(matcher, "g");
+
+        matcher.CancelPending();
+
+        Assert.False(matcher.HasPending);
+        Assert.Empty(Matches(matcher, "cc"));
+    }
+
+    [Fact]
+    public void DefaultBuffer_AcceptsLongAbbreviations()
+    {
+        var trigger = new string('a', 200);
+
+        Assert.NotNull(Type(new TriggerMatcher([new TriggerDefinition("x", trigger)], Defaults), trigger));
+    }
 }

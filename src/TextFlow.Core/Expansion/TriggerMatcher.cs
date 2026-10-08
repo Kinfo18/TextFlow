@@ -22,6 +22,7 @@ public sealed class TriggerMatcher
     private TriggerSet _immediate = TriggerSet.Empty;
     private TriggerDefinition? _pending;
     private int _pendingStart;
+    private bool _startIsBoundary = true;
 
     public TriggerMatcher(IEnumerable<TriggerDefinition> triggers, TriggerOptions options)
     {
@@ -100,9 +101,14 @@ public sealed class TriggerMatcher
             return null;
         }
 
-        var exact = _buffer.Length - _pendingStart == held.Trigger.Length;
+        if (_buffer.Length - _pendingStart != held.Trigger.Length)
+        {
+            ClearPending(); // the typed text stays: what follows may still be inside the same word
+            return null;
+        }
+
         Reset();
-        return exact ? new TriggerMatch(held.SnippetId, held.Trigger, Delimiter: null, held.Trigger.Length) : null;
+        return new TriggerMatch(held.SnippetId, held.Trigger, Delimiter: null, held.Trigger.Length);
     }
 
     /// <summary>True if typing <paramref name="c"/> would complete or extend a longer trigger than the pending one.</summary>
@@ -127,9 +133,37 @@ public sealed class TriggerMatcher
         ClearPending();
     }
 
+    /// <summary>The caret is at a known word start (click, new window, after an expansion): the buffer starts empty.</summary>
     public void Reset()
     {
         _buffer.Clear();
+        _startIsBoundary = true;
+        ClearPending();
+    }
+
+    /// <summary>
+    /// Drops the typed text but remembers whether it ended inside a word. Browsers fire focus events while the user
+    /// types (autocomplete lists); treating them as a fresh start fired "cc" inside "Dirección" (2026-10-08).
+    /// </summary>
+    public void Forget()
+    {
+        if (_buffer.Length > 0)
+        {
+            _startIsBoundary = !char.IsLetterOrDigit(_buffer[_buffer.Length - 1]);
+        }
+
+        _buffer.Clear();
+        ClearPending();
+    }
+
+    /// <summary>Drops the held trigger, keeping the typed text (a group menu dismissed with Esc).</summary>
+    public void CancelPending() => ClearPending();
+
+    /// <summary>Something was typed that the matcher never saw (capture off): the next trigger may be glued to a word.</summary>
+    public void OnUnseenText()
+    {
+        _buffer.Clear();
+        _startIsBoundary = false;
         ClearPending();
     }
 
@@ -176,10 +210,17 @@ public sealed class TriggerMatcher
         }
 
         // c rules out the longer candidates. The held trigger fires (c is swallowed, to be re-emitted) only if
-        // nothing was typed after it; "foto " + 'x' while waiting for "foto valida" is ordinary text.
-        var exact = tail.Length - 1 == held.Trigger.Length;
+        // nothing was typed after it; "foto " + 'x' while waiting for "foto valida" is ordinary text, and the
+        // buffer keeps it: clearing it made "cc" in "direccion" look like a word start after the "dir" menu (2026-10-08).
+        if (tail.Length - 1 != held.Trigger.Length)
+        {
+            ClearPending();
+            return null;
+        }
+
         Reset();
-        return exact ? new TriggerMatch(held.SnippetId, held.Trigger, c, held.Trigger.Length) : null;
+        _startIsBoundary = !char.IsLetterOrDigit(c); // c is typed right after the expansion
+        return new TriggerMatch(held.SnippetId, held.Trigger, c, held.Trigger.Length);
     }
 
     private void SetPending(TriggerDefinition definition, int start)
@@ -219,13 +260,14 @@ public sealed class TriggerMatcher
     }
 
     private bool IsBoundary(int start) =>
-        !_options.RequireWordBoundary || start == 0 || !char.IsLetterOrDigit(_buffer[start - 1]);
+        !_options.RequireWordBoundary || (start == 0 ? _startIsBoundary : !char.IsLetterOrDigit(_buffer[start - 1]));
 
     private void Append(char c)
     {
         if (_buffer.Length >= _options.MaxBufferLength)
         {
             var removed = _buffer.Length - _options.MaxBufferLength + 1;
+            _startIsBoundary = !char.IsLetterOrDigit(_buffer[removed - 1]);
             _buffer.Remove(0, removed);
             _pendingStart -= removed;
             if (_pendingStart < 0)

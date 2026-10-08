@@ -16,7 +16,7 @@ public enum GroupDraftError
 /// </summary>
 public sealed record GroupDraft(string Id, string ParentId, string Name, string AbbreviationText, bool IgnoreCase)
 {
-    private static readonly int MaxAbbreviationLength = TriggerOptions.Default.MaxBufferLength - 1;
+    public static int MaxAbbreviationLength { get; } = TriggerOptions.Default.MaxBufferLength - 1;
 
     public static GroupDraft New(string parentId) => new($"tf-g-{Guid.NewGuid():N}", parentId, string.Empty, string.Empty, IgnoreCase: true);
 

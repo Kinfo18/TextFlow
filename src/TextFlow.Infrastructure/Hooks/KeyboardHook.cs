@@ -41,6 +41,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
     private char? _pendingDeadKey;
     private volatile bool _captureEnabled;
     private volatile bool _menuMode;
+    private bool _menuLeftByTyping; // hook thread only: the matcher already holds what follows the menu
     /// <summary>At most one <see cref="TypingActivity"/> per interval: enough to keep audio awake, cheap for the hook.</summary>
     private static readonly long ActivityInterval = Stopwatch.Frequency * 4;
 
@@ -79,7 +80,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
             _captureEnabled = value;
             if (!value)
             {
-                _thread.InvokeAsync(ResetState);
+                _thread.InvokeAsync(ForgetText);
             }
         }
     }
@@ -113,7 +114,17 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
             _menuMode = value;
             if (!value)
             {
-                _thread.InvokeAsync(ResetState); // opening keeps the pending trigger so "cp" + '1' still reaches "cp1"
+                // Opening keeps the pending trigger so "cp" + '1' still reaches "cp1". A menu left by typing on
+                // keeps the matcher as the keys left it; a choice or a shortcut starts over.
+                _thread.InvokeAsync(() =>
+                {
+                    if (!_menuLeftByTyping)
+                    {
+                        ResetState();
+                    }
+
+                    _menuLeftByTyping = false;
+                });
             }
         }
     }
@@ -179,6 +190,13 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
     private void ResetState()
     {
         _matcher.Reset();
+        _pendingDeadKey = null;
+    }
+
+    /// <summary>Like <see cref="ResetState"/>, but the caret may still be inside a word (focus noise, capture off).</summary>
+    private void ForgetText()
+    {
+        _matcher.Forget();
         _pendingDeadKey = null;
     }
 
@@ -251,7 +269,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
 
         Interlocked.Increment(ref self._focusVersion);
         self._captureEnabled = false;
-        self.ResetState();
+        self.ForgetText(); // a click already reset; browsers also fire focus mid-word, which must not look like a word start
         self._events.Writer.TryWrite(new FocusChanged((nint)hwnd.Value));
     }
 
@@ -260,10 +278,14 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
         var started = Stopwatch.GetTimestamp();
         try
         {
-            if (message is not (PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN)
-                || key->dwExtraInfo == KeyboardInput.Signature
-                || !_captureEnabled)
+            if (message is not (PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN) || key->dwExtraInfo == KeyboardInput.Signature)
             {
+                return false;
+            }
+
+            if (!_captureEnabled)
+            {
+                NoteUnseenKey((VIRTUAL_KEY)key->vkCode);
                 return false;
             }
 
@@ -292,6 +314,26 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
         }
     }
 
+    /// <summary>
+    /// Capture is off (focus being evaluated, paused, excluded app): the key is never translated or stored, only
+    /// classified, so a trigger typed right after it is not taken for a word start.
+    /// </summary>
+    private void NoteUnseenKey(VIRTUAL_KEY vk)
+    {
+        if (IsModifier(vk) || vk == VIRTUAL_KEY.VK_BACK)
+        {
+            return;
+        }
+
+        if (IsShortcutDown() || IsNavigation(vk) || vk is VIRTUAL_KEY.VK_SPACE or VIRTUAL_KEY.VK_RETURN or VIRTUAL_KEY.VK_TAB)
+        {
+            ResetState();
+            return;
+        }
+
+        _matcher.OnUnseenText();
+    }
+
     private bool ProcessMenuKey(VIRTUAL_KEY vk, uint scanCode)
     {
         if (IsModifier(vk))
@@ -307,12 +349,27 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
 
         if (!shortcut && ToMenuInput(vk) is { } input)
         {
+            if (input.Kind == MenuInputKind.Escape)
+            {
+                _matcher.CancelPending(); // "g" stays typed: what follows is glued to it
+                _menuLeftByTyping = true;
+            }
+
             _events.Writer.TryWrite(new MenuKeyPressed(input));
             return true;
         }
 
         _events.Writer.TryWrite(new MenuInterrupted());
-        return false;
+        if (shortcut)
+        {
+            return false;
+        }
+
+        // The user kept typing ("g" menu, then "e"): the key is ordinary text and the matcher must see it, or the
+        // next trigger would look like a word start ("dir" menu, then "ección" fired "cc").
+        _menuLeftByTyping = true;
+        _matcher.CancelPending();
+        return ProcessKeyDown(vk, scanCode);
     }
 
     private bool ContinuePendingFromMenu(VIRTUAL_KEY vk, uint scanCode)
@@ -332,8 +389,13 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
         if (_matcher.OnCharacter(text[0]) is { } match)
         {
             _events.Writer.TryWrite(new TriggerTyped(match, (nint)PInvoke.GetForegroundWindow().Value));
+            return true; // the engine closes the menu for the longer trigger
         }
-        else if (_matcher.PendingMatch is { } pending && _matcher.PendingVersion != version)
+
+        // Still on the way to a longer trigger ("g" menu, typing "gracias"): hide the menu, keep the pending trigger.
+        _menuLeftByTyping = true;
+        _events.Writer.TryWrite(new MenuInterrupted());
+        if (_matcher.PendingMatch is { } pending && _matcher.PendingVersion != version)
         {
             _events.Writer.TryWrite(new TriggerPending(pending, _matcher.PendingVersion, (nint)PInvoke.GetForegroundWindow().Value));
         }
@@ -368,11 +430,8 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
             return false;
         }
 
-        var ctrl = IsDown(VIRTUAL_KEY.VK_CONTROL);
-        var alt = IsDown(VIRTUAL_KEY.VK_MENU);
-        var win = IsDown(VIRTUAL_KEY.VK_LWIN) || IsDown(VIRTUAL_KEY.VK_RWIN);
-        var altGr = ctrl && alt;
-        if (win || ((ctrl || alt) && !altGr) || IsNavigation(vk))
+        var altGr = IsDown(VIRTUAL_KEY.VK_CONTROL) && IsDown(VIRTUAL_KEY.VK_MENU);
+        if (IsShortcutDown() || IsNavigation(vk))
         {
             ResetState(); // shortcuts and navigation change what precedes the caret
             return false;
@@ -448,6 +507,14 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
         }
 
         return produced;
+    }
+
+    /// <summary>Win, Ctrl or Alt held, except AltGr (Ctrl+Alt), which types characters such as '@'.</summary>
+    private static bool IsShortcutDown()
+    {
+        var ctrl = IsDown(VIRTUAL_KEY.VK_CONTROL);
+        var alt = IsDown(VIRTUAL_KEY.VK_MENU);
+        return IsDown(VIRTUAL_KEY.VK_LWIN) || IsDown(VIRTUAL_KEY.VK_RWIN) || (ctrl ^ alt);
     }
 
     private static bool IsDown(VIRTUAL_KEY vk) => (PInvoke.GetAsyncKeyState((int)vk) & 0x8000) != 0;

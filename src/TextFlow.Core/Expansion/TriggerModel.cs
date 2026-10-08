@@ -28,5 +28,5 @@ public sealed record TriggerOptions(IReadOnlySet<char> Delimiters, bool RequireW
     public static TriggerOptions Default { get; } = new(
         new HashSet<char> { ' ', '\r', '\t', '.', ',', ':', '!', '?', ')' },
         RequireWordBoundary: true,
-        MaxBufferLength: 64);
+        MaxBufferLength: 256);
 }

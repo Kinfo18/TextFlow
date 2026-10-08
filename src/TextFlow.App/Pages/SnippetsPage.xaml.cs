@@ -473,7 +473,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     private static string Describe(SnippetDraftError error) => error switch
     {
         SnippetDraftError.NeedsAbbreviationOrName => "Escribe al menos una abreviatura o un nombre.",
-        SnippetDraftError.AbbreviationTooLong => "Una abreviatura es demasiado larga (máximo 63 caracteres).",
+        SnippetDraftError.AbbreviationTooLong => $"Una abreviatura es demasiado larga (máximo {SnippetDraft.MaxAbbreviationLength} caracteres).",
         SnippetDraftError.DelimiterInAbbreviation => "Tras un espacio o signo, las abreviaturas no pueden tener espacios ni signos.",
         _ => "No se puede guardar.",
     };
