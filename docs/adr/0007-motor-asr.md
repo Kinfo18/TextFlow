@@ -32,3 +32,4 @@ desincronizadas y se descartaron. WER normalizado (minúsculas, sin puntuación,
 - Corpus pequeño (9 frases, 1 hablante): repetir el benchmark con más frases y ruido de oficina antes de V0.2.
 - Grabación del corpus: ejecutar `spikes/asr/record-corpus.ps1` en una terminal propia, no vía `!` de Claude Code
   (sin salida en vivo el usuario pierde la sincronía con "HABLA AHORA").
+- PC de trabajo (2026-10-08, H0.1 de V0.2): mismo hardware que el de referencia (i5-12450H, 16 GB, RTX 2050 4 GB), así que allí también va el motor principal en CUDA.
