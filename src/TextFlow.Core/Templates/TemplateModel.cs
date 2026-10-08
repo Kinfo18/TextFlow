@@ -28,6 +28,8 @@ public sealed record ParsedTemplate(IReadOnlyList<TemplateSegment> Segments, IRe
 
     public bool RequiresInput => Fields.Count > 0;
 
+    public bool UsesClipboard => Segments.Any(s => s is VariableSegment { Variable: BuiltinVariable.Clipboard });
+
     public bool UsesSelection => Segments.Any(s => s is VariableSegment { Variable: BuiltinVariable.Selection });
 }
 

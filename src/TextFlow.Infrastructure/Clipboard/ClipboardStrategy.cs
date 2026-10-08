@@ -23,6 +23,7 @@ public sealed record ClipboardStrategyOptions(TimeSpan PasteSettleDelay)
 public sealed class ClipboardStrategy : IInsertionStrategy, IDisposable
 {
     private static readonly TimeSpan ModifierTimeout = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(1);
     private static readonly HWND MessageOnlyParent = new(-3); // HWND_MESSAGE
 
     private readonly ClipboardStrategyOptions _options;
@@ -47,6 +48,28 @@ public sealed class ClipboardStrategy : IInsertionStrategy, IDisposable
     public InsertionStrategyKind Kind => InsertionStrategyKind.Clipboard;
 
     public bool CanHandle(InsertionRequest request) => true;
+
+    /// <summary>
+    /// The user's clipboard text for <c>{{clipboard}}</c> (H5.3). Never while a paste holds our private text;
+    /// null if the clipboard is busy, empty or not text. User content: do not log or keep it.
+    /// </summary>
+    public string? ReadText()
+    {
+        if (!_gate.Wait(ReadTimeout))
+        {
+            return null;
+        }
+
+        try
+        {
+            var read = _thread.InvokeAsync(_store.ReadText);
+            return read.Wait(ReadTimeout) ? read.Result : null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public async Task<InsertionResult> InsertAsync(InsertionRequest request, CancellationToken ct)
     {

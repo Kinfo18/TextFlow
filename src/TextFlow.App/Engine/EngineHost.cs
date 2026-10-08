@@ -54,7 +54,8 @@ public sealed class EngineHost : IAsyncDisposable
             sink,
             TimeProvider.System,
             ExpansionEngineOptions.Default with { PendingTimeout = PendingTimeout(settings.PrefixTimeoutMs) },
-            fieldPrompt);
+            fieldPrompt,
+            new ClipboardVariables(_clipboard, TimeProvider.System));
         _watchdog = new HookWatchdog(_hook, InputProbe.LastInputTick, InputProbe.ForegroundBlocksHooks, TimeProvider.System, HookWatchdogOptions.Default);
         _watchdog.Reinstalled += info =>
         {

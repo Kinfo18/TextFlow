@@ -23,6 +23,7 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
     private readonly ListSink _sink = new();
     private readonly FakeTimeProvider _time = new();
     private readonly CancellationTokenSource _cts = new();
+    private readonly FakeVariables _variables;
     private readonly ExpansionEngine _engine;
     private readonly LibraryIndex _index;
     private Task? _run;
@@ -39,6 +40,8 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
                     Snippet("s-s1", "s1", "Hola, {{cliente}} ¡un gusto!"),
                     Snippet("s-frec", "frec1", "{{cliente}}: {{mes}}/{{año}} {{monto}} ({{cliente}})"),
                     Snippet("s-fecha", "fecha", "Año {{date:yyyy}} {{cursor}}fin"),
+                    Snippet("s-clip", "clip1", "Copiado: {{clipboard}}"),
+                    Snippet("s-clipf", "clipf", "{{cliente}} envió {{clipboard}}"),
                 ]),
                 new LibraryGroup("g-chat", "Chat", null, true, [],
                 [
@@ -49,9 +52,10 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
             ],
             []);
         _index = LibraryIndex.Build(root);
+        _variables = new FakeVariables(_time);
         _engine = new ExpansionEngine(
             _hook, _resolver, new SecurityPolicy(BuiltinExclusions.All), _insertion, _menu, _feedback, new FakePointer(),
-            _sink, _time, ExpansionEngineOptions.Default, _fields, new FakeVariables(_time));
+            _sink, _time, ExpansionEngineOptions.Default, _fields, _variables);
     }
 
     private static LibrarySnippet Snippet(string id, string abbreviation, string content) =>

@@ -71,7 +71,9 @@ public sealed partial class ExpansionEngine
         }
 
         var caret = target.Control.CaretBounds;
-        var open = new OpenFields(target, template, trailing, fromMenu, sendEnter, ++_fieldsSession);
+        // Filling the fields means copying, so {{clipboard}} keeps what was copied when the trigger fired.
+        var variables = template.UsesClipboard ? new FrozenClipboard(_variables, _variables.GetClipboardText()) : _variables;
+        var open = new OpenFields(target, template, variables, trailing, fromMenu, sendEnter, ++_fieldsSession);
         _openFields = open;
         _fieldPrompt!.Show(template.Fields, caret ?? _pointer.CursorAnchor(), target.Monitor, open.Session);
         Record(new FieldsShown(Now, target.ProcessName, template.Fields.Count, AnchoredToCaret: caret is not null));
@@ -98,7 +100,7 @@ public sealed partial class ExpansionEngine
             return;
         }
 
-        var rendered = Render(open.Template, finished.Values);
+        var rendered = Render(open.Template, finished.Values, open.Variables);
         var text = rendered.Text + open.Trailing;
         var caretOffset = CaretOffset(rendered, open.Trailing);
         if (_paused)
@@ -248,8 +250,9 @@ public sealed partial class ExpansionEngine
         Record(new FieldsClosed(Now, reason));
     }
 
-    private RenderedTemplate Render(ParsedTemplate template, IReadOnlyDictionary<string, string> values) =>
-        TemplateRenderer.Render(template, values, _variables, CultureInfo.CurrentCulture);
+    private RenderedTemplate Render(
+        ParsedTemplate template, IReadOnlyDictionary<string, string> values, IVariableSource? variables = null) =>
+        TemplateRenderer.Render(template, values, variables ?? _variables, CultureInfo.CurrentCulture);
 
     /// <summary><c>{{cursor}}</c> counts from the end of the text, so a trailing key typed after it moves it too.</summary>
     private static int CaretOffset(RenderedTemplate rendered, string trailing) =>
@@ -258,7 +261,8 @@ public sealed partial class ExpansionEngine
     private void OnFieldsFinished(int session, IReadOnlyDictionary<string, string>? values) =>
         _inbox.Writer.TryWrite(new FieldsFinished(session, values));
 
-    private sealed record OpenFields(ActiveTarget Target, ParsedTemplate Template, string Trailing, bool FromMenu, bool SendEnter, int Session);
+    private sealed record OpenFields(
+        ActiveTarget Target, ParsedTemplate Template, IVariableSource Variables, string Trailing, bool FromMenu, bool SendEnter, int Session);
 
     private sealed record FieldsFinished(int Session, IReadOnlyDictionary<string, string>? Values) : EngineWork;
 
@@ -266,6 +270,16 @@ public sealed partial class ExpansionEngine
         ActiveTarget Target, string Text, int CaretOffset, bool FromMenu, bool SendEnter, int Session, ITimer Timer);
 
     private sealed record WaitElapsed(int Session) : EngineWork;
+
+    /// <summary>The clipboard as it was when the fields prompt opened; the rest stays live. Lives only while the prompt is open.</summary>
+    private sealed class FrozenClipboard(IVariableSource live, string? clipboard) : IVariableSource
+    {
+        public DateTimeOffset Now => live.Now;
+
+        public string? GetClipboardText() => clipboard;
+
+        public string? GetSelectionText() => live.GetSelectionText();
+    }
 
     /// <summary>Date and time only: used when the host gives no variable source.</summary>
     private sealed class ClockVariables(TimeProvider time) : IVariableSource

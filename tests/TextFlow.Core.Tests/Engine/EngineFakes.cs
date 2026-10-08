@@ -282,7 +282,15 @@ internal sealed class FakeVariables(TimeProvider time) : IVariableSource
 {
     public DateTimeOffset Now => time.GetLocalNow();
 
-    public string? GetClipboardText() => null;
+    public string? Clipboard { get; set; }
+
+    public int ClipboardReads { get; private set; }
+
+    public string? GetClipboardText()
+    {
+        ClipboardReads++;
+        return Clipboard;
+    }
 
     public string? GetSelectionText() => null;
 }
