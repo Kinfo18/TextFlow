@@ -69,6 +69,12 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
     public void Refresh()
     {
         FillDays();
+        ShowDay();
+    }
+
+    /// <summary>Reloads the metrics of <see cref="_day"/> without touching the day list, so it is safe inside the ComboBox's own SelectionChanged.</summary>
+    private void ShowDay()
+    {
         ShowMemory();
         try
         {
@@ -195,8 +201,9 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
     {
         if (!_filling && DayChoice.SelectedItem is ComboBoxItem { Tag: DateOnly day })
         {
+            // Not Refresh(): clearing DayChoice.Items while it raises SelectionChanged crashes WinUI natively.
             _day = day;
-            Refresh();
+            ShowDay();
         }
     }
 
