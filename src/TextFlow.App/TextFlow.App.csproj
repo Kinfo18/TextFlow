@@ -21,6 +21,9 @@
     <!-- ADR-0004: unpackaged, self-contained (no MSIX); ADR-0008: x64 + PerMonitorV2 manifest. -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Without MSIX tooling an unpackaged publish leaves out TextFlow.pri and the .xbf files: the tray works but the
+         main window fails with XamlParseException (H6, first run on the work PC). -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationManifest>app.manifest</ApplicationManifest>

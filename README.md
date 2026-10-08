@@ -4,7 +4,7 @@ Capa de entrada de texto local para Windows 11: expansión de snippets, dictado 
 
 - Especificación: [`docs/textflow_especificacion_v2.md`](docs/textflow_especificacion_v2.md)
 - Decisiones: [`docs/adr/`](docs/adr)
-- Estado actual: [`docs/fase0-plan.md`](docs/fase0-plan.md)
+- Estado actual: [`docs/v0.1-plan.md`](docs/v0.1-plan.md)
 
 ## Requisitos
 Windows 11 24H2+, .NET SDK 10.
@@ -14,6 +14,11 @@ Windows 11 24H2+, .NET SDK 10.
 dotnet build
 dotnet test tests/TextFlow.Core.Tests                 # lógica pura
 dotnet test tests/TextFlow.Infrastructure.Tests       # abre ventanas e inyecta teclado: no tocar el PC durante ~3 s
+```
+
+## Zip portable
+```powershell
+pwsh build/publish-portable.ps1                       # dist/TextFlow-v0.1.0-portable.zip (self-contained, con TextFlow cerrado)
 ```
 
 ## Estructura

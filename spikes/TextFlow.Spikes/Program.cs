@@ -27,6 +27,7 @@ return command switch
     "import" => ImportSpike.Run(args.Skip(1).ToArray()),
     "menu" => await TextFlow.Spikes.MenuSpike.RunAsync(args.Skip(1).ToArray()),
     "focus" => TextFlow.Spikes.FocusProbe.Run(args.Skip(1).ToArray()),
+    "stress" => await TextFlow.Spikes.StressRun.RunAsync(args.Skip(1).ToArray()),
     _ => Help(),
 };
 
@@ -41,6 +42,7 @@ static int Help()
           expand                         Hook global + snippets demo instantáneos: ;firma ;fecha ;cur ;mail CC (S3)
           import <archivo.atext>         Lee un backup de aText y muestra resumen e incidencias (S6)
           menu <archivo.atext> [vol]     Abreviaturas de grupo abren menú en el caret; vol 0-100 del chime (S7)
+          stress [n]                     Con TextFlow en marcha: n expansiones reales en el editor enfocado (H6.1)
         """);
     return 0;
 }

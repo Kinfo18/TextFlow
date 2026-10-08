@@ -19,3 +19,6 @@ __pycache__/
 
 # Portable builds for other PCs
 dist/
+
+# Content-free logs brought back from the work PC (H6.2)
+logs-trabajo/
