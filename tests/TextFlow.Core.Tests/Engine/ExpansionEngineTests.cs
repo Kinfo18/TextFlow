@@ -40,6 +40,12 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
                     Snippet("s-frec", "frec1", "{{cliente}}: {{mes}}/{{año}} {{monto}} ({{cliente}})"),
                     Snippet("s-fecha", "fecha", "Año {{date:yyyy}} {{cursor}}fin"),
                 ]),
+                new LibraryGroup("g-chat", "Chat", null, true, [],
+                [
+                    Snippet("s-env", "env", "listo") with { SendEnter = true },
+                    Snippet("s-envc", "envc", "hola {{cursor}}!") with { SendEnter = true },
+                    Snippet("s-envf", "envf", "Hola {{cliente}}") with { SendEnter = true },
+                ]),
             ],
             []);
         _index = LibraryIndex.Build(root);
@@ -114,6 +120,55 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
         Assert.Equal(2, request.BackspacesBefore);
         Assert.Equal(1, _feedback.Plays);
         Assert.Contains(_sink.Events, e => e is ExpansionCompleted { Status: InsertionStatus.Success, FromMenu: false, SoundPlayed: true });
+    }
+
+    [Fact]
+    public async Task PlainSnippet_DoesNotPressEnter()
+    {
+        await StartAsync();
+
+        await TypeAsync(new TriggerTyped(Match("cc"), FakeResolver.Window));
+
+        Assert.False(Assert.Single(_insertion.Requests).PressEnterAfter);
+    }
+
+    [Fact]
+    public async Task SendEnterSnippet_PressesEnterAfterTheText()
+    {
+        await StartAsync();
+
+        await TypeAsync(new TriggerTyped(Match("env"), FakeResolver.Window));
+
+        var request = Assert.Single(_insertion.Requests);
+        Assert.Equal("listo", request.Text);
+        Assert.True(request.PressEnterAfter);
+    }
+
+    [Fact]
+    public async Task SendEnterSnippet_IgnoresCursor_SoTheWholeMessageIsSent()
+    {
+        await StartAsync();
+
+        await TypeAsync(new TriggerTyped(Match("envc"), FakeResolver.Window));
+
+        var request = Assert.Single(_insertion.Requests);
+        Assert.Equal("hola !", request.Text);
+        Assert.Equal(0, request.CaretOffsetFromEnd);
+        Assert.True(request.PressEnterAfter);
+    }
+
+    [Fact]
+    public async Task SendEnterSnippetWithFields_PressesEnterOnlyWithTheFinalText()
+    {
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("envf"), FakeResolver.Window));
+
+        _fields.Finish(new Dictionary<string, string> { ["cliente"] = "Ana" });
+        await SettleAsync();
+
+        Assert.False(_insertion.Requests[0].PressEnterAfter); // removing the trigger
+        Assert.Equal("Hola Ana", _insertion.Requests[^1].Text);
+        Assert.True(_insertion.Requests[^1].PressEnterAfter);
     }
 
     [Fact]

@@ -11,6 +11,18 @@ public interface ITargetResolver
     /// <summary>Brings the target's window back to the foreground (after TextFlow's own field prompt had the focus).</summary>
     /// <returns>False if Windows refused or the window is gone.</returns>
     bool Activate(ActiveTarget target);
+
+    /// <summary>
+    /// Remembers the target's focused field and caret (UI Automation, content-free) so <see cref="RestoreField"/> can
+    /// return to it after the user clicked elsewhere in the same window, e.g. to copy a value from the same web page.
+    /// </summary>
+    void BookmarkField(ActiveTarget target)
+    {
+    }
+
+    /// <summary>Gives the focus and caret back to the field bookmarked for <paramref name="target"/>.</summary>
+    /// <returns>False when nothing was bookmarked for it or the field refused (gone, re-rendered).</returns>
+    bool RestoreField(ActiveTarget target) => false;
 }
 
 public enum TargetValidationStatus

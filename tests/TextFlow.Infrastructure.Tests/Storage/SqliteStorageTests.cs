@@ -42,7 +42,7 @@ public sealed class SqliteStorageTests : IAsyncLifetime
                 [new LibraryGroup("g-sub", "Sub", null, false, [], [Snippet("s-note", string.Empty, "Nota informativa")])],
                 [Snippet("s-nc", "Hola 👋\r\nlínea 2 — ñandú «comillas»", "nc", "No confirmado")]),
             new LibraryGroup("g-t", "Temples", "T1", true, [],
-                [Snippet("s-cc", "texto cc", "cc"), Snippet("s-sig", "firma", "sig") with { Mode = SnippetMode.AfterDelimiter, Enabled = false }]),
+                [Snippet("s-cc", "texto cc", "cc") with { SendEnter = true }, Snippet("s-sig", "firma", "sig") with { Mode = SnippetMode.AfterDelimiter, Enabled = false }]),
         ],
         []);
 

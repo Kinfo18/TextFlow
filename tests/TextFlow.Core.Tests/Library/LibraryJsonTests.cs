@@ -13,7 +13,7 @@ public sealed class LibraryJsonTests
             new LibraryGroup("g-t", "Temples", "T1", true, [],
                 [new LibrarySnippet("s-sig", "sig", "firma", false, ["sig"], SnippetMode.AfterDelimiter, Enabled: false)]),
         ],
-        [new LibrarySnippet("s-root", "rr", "en la raíz", false, ["rr"])]);
+        [new LibrarySnippet("s-root", "rr", "en la raíz", false, ["rr"], SendEnter: true)]);
 
     private static void AssertSameTree(LibraryGroup expected, LibraryGroup actual) =>
         Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));

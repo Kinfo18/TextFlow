@@ -187,15 +187,15 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
         {
             command.Transaction = transaction;
             command.CommandText = """
-                INSERT INTO snippet (id, group_id, name, content, content_type, mode, enabled, sort_order, created_at, updated_at)
-                VALUES ($id, $group, $name, $content, $type, $mode, $enabled,
+                INSERT INTO snippet (id, group_id, name, content, content_type, mode, enabled, send_enter, sort_order, created_at, updated_at)
+                VALUES ($id, $group, $name, $content, $type, $mode, $enabled, $sendEnter,
                         (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM snippet WHERE group_id = $group), $now, $now)
                 ON CONFLICT (id) DO UPDATE SET
                     sort_order = CASE WHEN snippet.group_id = excluded.group_id
                                       THEN snippet.sort_order ELSE excluded.sort_order END,
                     group_id = excluded.group_id, name = excluded.name, content = excluded.content,
                     content_type = excluded.content_type, mode = excluded.mode, enabled = excluded.enabled,
-                    updated_at = excluded.updated_at;
+                    send_enter = excluded.send_enter, updated_at = excluded.updated_at;
                 """;
             AddSnippetParameters(command, groupId, snippet, Now());
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
@@ -235,8 +235,8 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
             {
                 command.Transaction = transaction;
                 command.CommandText = """
-                    INSERT INTO snippet (id, group_id, name, content, content_type, mode, enabled, sort_order, created_at, updated_at)
-                    VALUES ($id, $group, $name, $content, $type, $mode, $enabled, $order, $now, $now);
+                    INSERT INTO snippet (id, group_id, name, content, content_type, mode, enabled, send_enter, sort_order, created_at, updated_at)
+                    VALUES ($id, $group, $name, $content, $type, $mode, $enabled, $sendEnter, $order, $now, $now);
                     """;
                 AddSnippetParameters(command, group.Id, group.Snippets[i], now);
                 command.Parameters.AddWithValue("$order", i);
@@ -292,6 +292,7 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
         command.Parameters.AddWithValue("$type", snippet.IsRichText ? "rich" : "text");
         command.Parameters.AddWithValue("$mode", snippet.Mode == SnippetMode.AfterDelimiter ? "after_delimiter" : "immediate");
         command.Parameters.AddWithValue("$enabled", snippet.Enabled ? 1 : 0);
+        command.Parameters.AddWithValue("$sendEnter", snippet.SendEnter ? 1 : 0);
         command.Parameters.AddWithValue("$now", now);
     }
 
@@ -336,7 +337,7 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
         SqliteConnection connection, ILookup<string, string> abbreviations, CancellationToken ct)
     {
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, group_id, name, content, content_type, mode, enabled FROM snippet ORDER BY sort_order, rowid;";
+        command.CommandText = "SELECT id, group_id, name, content, content_type, mode, enabled, send_enter FROM snippet ORDER BY sort_order, rowid;";
         await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
         var rows = new List<SnippetRow>();
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -349,7 +350,8 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
                 IsRichText: reader.GetString(4) == "rich",
                 abbreviations[id].ToArray(),
                 reader.GetString(5) == "after_delimiter" ? SnippetMode.AfterDelimiter : SnippetMode.Immediate,
-                Enabled: reader.GetInt64(6) != 0)));
+                Enabled: reader.GetInt64(6) != 0,
+                SendEnter: reader.GetInt64(7) != 0)));
         }
 
         return rows.ToLookup(r => r.GroupId, r => r.Snippet);

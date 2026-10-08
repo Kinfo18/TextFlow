@@ -91,6 +91,10 @@ public sealed class ClipboardStrategy : IInsertionStrategy, IDisposable
             // Not cancellable: once Ctrl+V was sent we must still try to restore the user's clipboard.
             await Task.Delay(_options.PasteSettleDelay, CancellationToken.None).ConfigureAwait(false);
             KeyboardInput.Tap(VIRTUAL_KEY.VK_LEFT, request.CaretOffsetFromEnd);
+            if (pasted && request.PressEnterAfter)
+            {
+                KeyboardInput.Tap(VIRTUAL_KEY.VK_RETURN); // after the settle delay: the paste has landed
+            }
 
             if (ClipboardStore.SequenceNumber != ourSequence)
             {

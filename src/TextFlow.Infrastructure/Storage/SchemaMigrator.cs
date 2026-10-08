@@ -59,6 +59,11 @@ public static class SchemaMigrator
             value_json TEXT NOT NULL
         );
         """,
+
+        // 2 — per-command Enter after expanding (send a chat message), off by default (2026-10-08).
+        """
+        ALTER TABLE snippet ADD COLUMN send_enter INTEGER NOT NULL DEFAULT 0 CHECK (send_enter IN (0, 1));
+        """,
     ];
 
     public static int LatestVersion => Migrations.Length;

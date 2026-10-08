@@ -144,6 +144,9 @@
                         </RadioButtons>
                         <ToggleSwitch x:Name="EnabledSwitch" Header="Activo" OnContent="Se expande" OffContent="Desactivado (sigue en el menú)"
                                       Toggled="OnEnabledToggled" />
+                        <CheckBox x:Name="SendEnterBox" Content="Enviar con Enter al expandir (chats: WhatsApp, chat del trabajo)"
+                                  Checked="OnSendEnterChanged" Unchecked="OnSendEnterChanged"
+                                  ToolTipService.ToolTip="Pulsa Enter justo después de insertar el texto. Si el texto tiene {{cursor}}, se ignora y el mensaje se envía completo." />
                         <TextBlock x:Name="DetailFlags" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
                     </StackPanel>
                 </ScrollViewer>

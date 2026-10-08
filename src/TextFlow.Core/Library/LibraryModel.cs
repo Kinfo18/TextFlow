@@ -14,6 +14,7 @@ public enum SnippetMode
 /// </param>
 /// <param name="Mode">Immediate (aText default) or after a delimiter.</param>
 /// <param name="Enabled">Disabled snippets stay in the library and menus but never expand.</param>
+/// <param name="SendEnter">Presses Enter after the text, to send a chat message (off unless the user turns it on).</param>
 public sealed record LibrarySnippet(
     string Id,
     string Name,
@@ -21,7 +22,8 @@ public sealed record LibrarySnippet(
     bool IsRichText,
     IReadOnlyList<string> Abbreviations,
     SnippetMode Mode = SnippetMode.Immediate,
-    bool Enabled = true)
+    bool Enabled = true,
+    bool SendEnter = false)
 {
     /// <summary>Empty snippets are notes the user reads in the group menu; selecting one inserts nothing.</summary>
     public bool IsInfoOnly => Content.Length == 0;

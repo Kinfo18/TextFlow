@@ -36,6 +36,10 @@ public sealed class SendInputStrategy : IInsertionStrategy
 
         request.Delivered?.Invoke();
         KeyboardInput.Tap(VIRTUAL_KEY.VK_LEFT, request.CaretOffsetFromEnd);
+        if (request.PressEnterAfter)
+        {
+            KeyboardInput.Tap(VIRTUAL_KEY.VK_RETURN); // queued after the typed text
+        }
         return new InsertionResult(InsertionStatus.Success, Kind, clock.Elapsed, InputSent: sent > 0 || sentBack > 0);
     }
 }

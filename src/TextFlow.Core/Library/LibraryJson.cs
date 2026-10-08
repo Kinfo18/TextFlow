@@ -77,7 +77,8 @@ public static class LibraryJson
             [.. s.Abbreviations],
             s.IsRichText ? true : null,
             s.Mode == SnippetMode.AfterDelimiter ? "after_delimiter" : null,
-            s.Enabled ? null : false))]);
+            s.Enabled ? null : false,
+            s.SendEnter ? true : null))]);
 
     private static LibraryGroup FromDto(GroupDto dto, int depth, HashSet<string> ids)
     {
@@ -107,7 +108,8 @@ public static class LibraryJson
             "after_delimiter" => SnippetMode.AfterDelimiter,
             _ => throw new InvalidDataException("Un snippet tiene un modo desconocido."),
         },
-        dto.Enabled ?? true);
+        dto.Enabled ?? true,
+        dto.SendEnter ?? false);
 
     /// <summary>Ids identify rows in the database and diffs in the import report: they must be present and unique.</summary>
     private static string UniqueId(string? id, HashSet<string> ids)
@@ -128,5 +130,6 @@ public static class LibraryJson
         string? Id, string? Name, string? Abbreviation, bool? IgnoreCase, IReadOnlyList<GroupDto?>? Groups, IReadOnlyList<SnippetDto?>? Snippets);
 
     private sealed record SnippetDto(
-        string? Id, string? Name, string? Content, IReadOnlyList<string?>? Abbreviations, bool? RichText, string? Mode, bool? Enabled);
+        string? Id, string? Name, string? Content, IReadOnlyList<string?>? Abbreviations, bool? RichText, string? Mode, bool? Enabled,
+        bool? SendEnter = null);
 }

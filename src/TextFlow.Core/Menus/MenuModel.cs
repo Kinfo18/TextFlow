@@ -9,7 +9,8 @@ public abstract record MenuEntry(string Label)
 public sealed record MenuGroupEntry(string Label, IReadOnlyList<MenuEntry> Children) : MenuEntry(Label);
 
 /// <remarks><see cref="Content"/> is user content: never log it.</remarks>
-public sealed record MenuSnippetEntry(string Label, string Content) : MenuEntry(Label)
+/// <param name="SendEnter">Enter follows the text (<see cref="Library.LibrarySnippet.SendEnter"/>).</param>
+public sealed record MenuSnippetEntry(string Label, string Content, bool SendEnter = false) : MenuEntry(Label)
 {
     /// <summary>Empty snippets are notes the user reads in the menu (aText usage); they insert nothing.</summary>
     public bool IsInfoOnly => Content.Length == 0;

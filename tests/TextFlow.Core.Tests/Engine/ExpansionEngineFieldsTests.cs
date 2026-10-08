@@ -1,4 +1,5 @@
 using TextFlow.Contracts.Insertion;
+using TextFlow.Contracts.Targeting;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Engine;
 using TextFlow.Core.Input;
@@ -152,19 +153,56 @@ public sealed partial class ExpansionEngineTests
         Assert.Contains(_sink.Events, e => e is FieldsClosed { Reason: FieldsCloseReason.Cancelled });
     }
 
+    private static ActiveTarget InField(string elementId) =>
+        FakeResolver.Notepad with { Control = FakeResolver.Notepad.Control with { ElementId = elementId } };
+
     [Fact]
     public async Task WhenTheBrowserTabChanged_SameWindowButAnotherElement_ItWaits()
     {
-        _resolver.Target = FakeResolver.Notepad with { Control = FakeResolver.Notepad.Control with { ElementId = "tab-1" } };
+        _resolver.Target = InField("tab-1");
         await StartAsync();
         await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
-        _resolver.Target = FakeResolver.Notepad with { Control = FakeResolver.Notepad.Control with { ElementId = "tab-2" } };
+        _resolver.Target = InField("tab-2");
 
         _fields.Finish(Values(("cliente", "Ana")));
         await SettleAsync();
 
+        Assert.Equal(1, _resolver.Restores); // tried to give the focus back; the field refused
         Assert.Single(_insertion.Requests);
         Assert.Equal(1, _fields.WaitingShown);
+    }
+
+    [Fact]
+    public async Task FieldWithUiaIdentity_IsBookmarkedBeforeThePromptShows()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+
+        Assert.Equal("chat-box", Assert.Single(_resolver.Bookmarks).Control.ElementId);
+        Assert.NotNull(_fields.Shown);
+    }
+
+    [Fact]
+    public async Task ValueCopiedFromTheSamePage_FocusGoesBackToTheField_AndTheTextIsInserted()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        _resolver.Target = InField("customer-name"); // the user clicked the name on the page to copy it
+        _resolver.OnRestore = original =>
+        {
+            _resolver.Target = original;
+            return true;
+        };
+
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+
+        Assert.Equal(1, _resolver.Restores);
+        Assert.Equal(0, _fields.WaitingShown);
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
     }
 
     [Fact]

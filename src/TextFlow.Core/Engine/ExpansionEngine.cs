@@ -321,7 +321,7 @@ public sealed partial class ExpansionEngine
     {
         // A pending trigger broken by another key carries that key as Delimiter: type it after the expansion.
         var trailing = match.Delimiter is { } key and not ('\r' or '\t') ? key.ToString() : string.Empty;
-        var result = await ExpandContentAsync(target, snippet.Content, match.Backspaces, trailing, fromMenu: false).ConfigureAwait(false);
+        var result = await ExpandContentAsync(target, snippet, match.Backspaces, trailing, fromMenu: false).ConfigureAwait(false);
         if (result is { Succeeded: false, InputSent: false })
         {
             await ReEmitAsync(target, match.Delimiter).ConfigureAwait(false);
@@ -383,7 +383,7 @@ public sealed partial class ExpansionEngine
 
         if (step.Chosen is { } snippet && !_paused)
         {
-            await ExpandContentAsync(open.Target, snippet.Content, open.Match.Backspaces, string.Empty, fromMenu: true).ConfigureAwait(false);
+            await ExpandContentAsync(open.Target, snippet, open.Match.Backspaces, string.Empty, fromMenu: true).ConfigureAwait(false);
         }
     }
 
@@ -474,7 +474,9 @@ public sealed partial class ExpansionEngine
         }
     }
 
-    private async Task<InsertionResult> ExpandAsync(ActiveTarget target, string text, int backspaces, bool fromMenu, int caretOffset = 0)
+    /// <param name="sendEnter">Enter follows the text; <c>{{cursor}}</c> is then ignored: the message is sent whole.</param>
+    private async Task<InsertionResult> ExpandAsync(
+        ActiveTarget target, string text, int backspaces, bool fromMenu, int caretOffset = 0, bool sendEnter = false)
     {
         // Chime the moment the text lands, not after the clipboard restore (~250 ms later): it must feel instant.
         var delivered = 0;
@@ -487,7 +489,9 @@ public sealed partial class ExpansionEngine
             }
         }
 
-        var result = await _insertion.InsertAsync(new InsertionRequest(target, text, backspaces, CaretOffsetFromEnd: caretOffset, Delivered: OnDelivered), _stopping).ConfigureAwait(false);
+        var request = new InsertionRequest(
+            target, text, backspaces, CaretOffsetFromEnd: sendEnter ? 0 : caretOffset, Delivered: OnDelivered, PressEnterAfter: sendEnter);
+        var result = await _insertion.InsertAsync(request, _stopping).ConfigureAwait(false);
         if (result.Succeeded)
         {
             OnDelivered(); // a strategy that does not report delivery

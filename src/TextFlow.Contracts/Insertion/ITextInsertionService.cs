@@ -30,13 +30,15 @@ public enum InsertionStrategyKind
 /// <param name="CaretOffsetFromEnd">Left-arrow presses after inserting, to place the caret at <c>{{cursor}}</c>.</param>
 /// <param name="Delivered">Invoked at most once, on any thread, the moment the text reached the target (paste or typing
 /// sent), before slower cleanup such as restoring the clipboard. Lets the chime match what the user sees.</param>
+/// <param name="PressEnterAfter">Presses Enter once the text is in, to send a chat message.</param>
 public sealed record InsertionRequest(
     ActiveTarget Target,
     string Text,
     int BackspacesBefore = 0,
     InsertionStrategyKind? PreferredStrategy = null,
     int CaretOffsetFromEnd = 0,
-    Action? Delivered = null);
+    Action? Delivered = null,
+    bool PressEnterAfter = false);
 
 public enum InsertionStatus
 {

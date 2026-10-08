@@ -253,6 +253,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
             ContentBox.Text = draft.Content;
             ModeChoice.SelectedIndex = draft.Mode == SnippetMode.AfterDelimiter ? 1 : 0;
             EnabledSwitch.IsOn = draft.Enabled;
+            SendEnterBox.IsChecked = draft.SendEnter;
             DetailFlags.Text = draft.IsRichText ? "En aText tenía formato; se inserta como texto." : string.Empty;
             EditorMessage.Text = string.Empty;
             DeleteButton.IsEnabled = !isNew;
@@ -284,6 +285,8 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     private void OnModeChanged(object sender, SelectionChangedEventArgs e) => MarkDirty();
 
     private void OnEnabledToggled(object sender, RoutedEventArgs e) => MarkDirty();
+
+    private void OnSendEnterChanged(object sender, RoutedEventArgs e) => MarkDirty();
 
     private void MarkDirty()
     {
@@ -332,6 +335,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         Content = ContentBox.Text.ReplaceLineEndings(_lineEnding),
         Mode = ModeChoice.SelectedIndex == 1 ? SnippetMode.AfterDelimiter : SnippetMode.Immediate,
         Enabled = EnabledSwitch.IsOn,
+        SendEnter = SendEnterBox.IsChecked == true,
     };
 
     private async void OnSave(object sender, RoutedEventArgs e)

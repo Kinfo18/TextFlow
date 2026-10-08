@@ -30,7 +30,7 @@ internal static class UiaCaretReader
     }
 
     /// <summary>TextPattern2.GetCaretRange where supported (Chrome, Edge), else the first selection range.</summary>
-    private static ITextRange? CaretRange(AutomationElement element)
+    internal static ITextRange? CaretRange(AutomationElement element)
     {
         var patterns = element.Patterns;
         if (patterns.Text2.TryGetPattern(out var text2))

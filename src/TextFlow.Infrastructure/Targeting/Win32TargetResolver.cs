@@ -112,6 +112,23 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         }
     }
 
+    public void BookmarkField(ActiveTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (target.Control.ElementId is { } elementId && target.ProcessId != Environment.ProcessId)
+        {
+            _controlInspector.Bookmark((uint)target.ProcessId, elementId);
+        }
+    }
+
+    public bool RestoreField(ActiveTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return target.Control.ElementId is { } elementId
+            && target.ProcessId != Environment.ProcessId
+            && _controlInspector.Restore((uint)target.ProcessId, elementId);
+    }
+
     public TargetValidation ValidateTarget(ActiveTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);

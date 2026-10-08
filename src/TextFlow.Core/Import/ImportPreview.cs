@@ -63,6 +63,7 @@ public sealed record ImportPreview(
         || before.IsRichText != after.IsRichText
         || before.Mode != after.Mode
         || before.Enabled != after.Enabled
+        || before.SendEnter != after.SendEnter
         || !before.Abbreviations.SequenceEqual(after.Abbreviations, StringComparer.Ordinal);
 
     private static IEnumerable<LibraryGroup> AllGroups(LibraryGroup group) => group.Groups.SelectMany(AllGroups).Prepend(group);

@@ -51,6 +51,17 @@ public sealed class SnippetDraftTests
     }
 
     [Fact]
+    public void SendEnter_RoundTripsAndCountsAsAnEdit()
+    {
+        var snippet = new LibrarySnippet("s", "n", "c", false, ["a"], SendEnter: true);
+        var loaded = SnippetDraft.From(snippet);
+
+        Assert.True(loaded.ToSnippet().Snippet!.SendEnter);
+        Assert.False((loaded with { SendEnter = false }).HasSameEdits(loaded));
+        Assert.False(SnippetDraft.New().SendEnter);
+    }
+
+    [Fact]
     public void TooLongAbbreviation_IsAnError()
     {
         var (_, errors) = (SnippetDraft.New() with { AbbreviationsText = new string('a', SnippetDraft.MaxAbbreviationLength + 1), Content = "x" }).ToSnippet();

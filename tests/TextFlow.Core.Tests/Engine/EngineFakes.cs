@@ -114,6 +114,21 @@ internal sealed class FakeResolver : ITargetResolver
         Activations++;
         return ActivateResult;
     }
+
+    public List<ActiveTarget> Bookmarks { get; } = [];
+
+    public int Restores { get; private set; }
+
+    /// <summary>What giving the focus back does; null = the field refuses.</summary>
+    public Func<ActiveTarget, bool>? OnRestore { get; set; }
+
+    public void BookmarkField(ActiveTarget target) => Bookmarks.Add(target);
+
+    public bool RestoreField(ActiveTarget target)
+    {
+        Restores++;
+        return OnRestore?.Invoke(target) ?? false;
+    }
 }
 
 internal sealed class FakeInsertion : ITextInsertionService

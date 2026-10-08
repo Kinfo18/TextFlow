@@ -25,7 +25,8 @@ public sealed record SnippetDraft(
     string Content,
     bool IsRichText,
     SnippetMode Mode,
-    bool Enabled)
+    bool Enabled,
+    bool SendEnter = false)
 {
     public static int MaxAbbreviationLength { get; } = TriggerOptions.Default.MaxBufferLength - 1;
 
@@ -40,7 +41,8 @@ public sealed record SnippetDraft(
             && Name == loaded.Name
             && Normalize(Content) == Normalize(loaded.Content)
             && Mode == loaded.Mode
-            && Enabled == loaded.Enabled;
+            && Enabled == loaded.Enabled
+            && SendEnter == loaded.SendEnter;
     }
 
     private static string Normalize(string text) => text.ReplaceLineEndings("\n");
@@ -52,7 +54,8 @@ public sealed record SnippetDraft(
     {
         ArgumentNullException.ThrowIfNull(snippet);
         return new SnippetDraft(
-            snippet.Id, string.Join('\n', snippet.Abbreviations), snippet.Name, snippet.Content, snippet.IsRichText, snippet.Mode, snippet.Enabled);
+            snippet.Id, string.Join('\n', snippet.Abbreviations), snippet.Name, snippet.Content, snippet.IsRichText, snippet.Mode, snippet.Enabled,
+            snippet.SendEnter);
     }
 
     public IReadOnlyList<string> Abbreviations =>
@@ -86,6 +89,6 @@ public sealed record SnippetDraft(
 
         return errors.Count > 0
             ? (null, errors)
-            : (new LibrarySnippet(Id, name, Content, IsRichText, abbreviations, Mode, Enabled), errors);
+            : (new LibrarySnippet(Id, name, Content, IsRichText, abbreviations, Mode, Enabled, SendEnter), errors);
     }
 }

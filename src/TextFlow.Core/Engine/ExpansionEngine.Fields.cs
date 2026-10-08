@@ -3,6 +3,7 @@ using TextFlow.Contracts.Insertion;
 using TextFlow.Contracts.Targeting;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Input;
+using TextFlow.Core.Menus;
 using TextFlow.Core.Templates;
 
 namespace TextFlow.Core.Engine;
@@ -24,26 +25,29 @@ public sealed partial class ExpansionEngine
     /// <summary>Expands snippet content: plain text as is, templates rendered or, with fields, asked for first.</summary>
     /// <returns>Null when the fields prompt took over (nothing inserted yet).</returns>
     private async Task<InsertionResult?> ExpandContentAsync(
-        ActiveTarget target, string content, int backspaces, string trailing, bool fromMenu)
+        ActiveTarget target, MenuSnippetEntry snippet, int backspaces, string trailing, bool fromMenu)
     {
+        var content = snippet.Content;
         if (!content.Contains("{{", StringComparison.Ordinal))
         {
-            return await ExpandAsync(target, content + trailing, backspaces, fromMenu).ConfigureAwait(false); // fast path
+            return await ExpandAsync(target, content + trailing, backspaces, fromMenu, sendEnter: snippet.SendEnter)
+                .ConfigureAwait(false); // fast path
         }
 
         var template = TemplateParser.Parse(content);
         if (template.RequiresInput && _fieldPrompt is not null)
         {
-            await AskFieldsAsync(target, template, backspaces, trailing, fromMenu).ConfigureAwait(false);
+            await AskFieldsAsync(target, template, backspaces, trailing, fromMenu, snippet.SendEnter).ConfigureAwait(false);
             return null;
         }
 
         var rendered = Render(template, NoValues);
-        return await ExpandAsync(target, rendered.Text + trailing, backspaces, fromMenu, CaretOffset(rendered, trailing))
+        return await ExpandAsync(target, rendered.Text + trailing, backspaces, fromMenu, CaretOffset(rendered, trailing), snippet.SendEnter)
             .ConfigureAwait(false);
     }
 
-    private async Task AskFieldsAsync(ActiveTarget target, ParsedTemplate template, int backspaces, string trailing, bool fromMenu)
+    private async Task AskFieldsAsync(
+        ActiveTarget target, ParsedTemplate template, int backspaces, string trailing, bool fromMenu, bool sendEnter)
     {
         CancelFields(FieldsCloseReason.Replaced);
 
@@ -59,8 +63,15 @@ public sealed partial class ExpansionEngine
             }
         }
 
+        if (target.Control.ElementId is not null)
+        {
+            // Before the prompt takes the focus, and once the target has had a moment to delete the trigger.
+            await Task.Delay(BookmarkSettle, TimeProvider.System, _stopping).ConfigureAwait(false);
+            await Task.Run(() => _resolver.BookmarkField(target), _stopping).ConfigureAwait(false);
+        }
+
         var caret = target.Control.CaretBounds;
-        var open = new OpenFields(target, template, trailing, fromMenu, ++_fieldsSession);
+        var open = new OpenFields(target, template, trailing, fromMenu, sendEnter, ++_fieldsSession);
         _openFields = open;
         _fieldPrompt!.Show(template.Fields, caret ?? _pointer.CursorAnchor(), target.Monitor, open.Session);
         Record(new FieldsShown(Now, target.ProcessName, template.Fields.Count, AnchoredToCaret: caret is not null));
@@ -102,17 +113,17 @@ public sealed partial class ExpansionEngine
             // Still on the page the values came from (another tab cannot be switched to from here): wait for the user.
             var timer = _time.CreateTimer(
                 _ => _inbox.Writer.TryWrite(new WaitElapsed(open.Session)), null, _options.ReturnWaitTimeout, Timeout.InfiniteTimeSpan);
-            _waiting = new Waiting(open.Target, text, caretOffset, open.FromMenu, open.Session, timer);
+            _waiting = new Waiting(open.Target, text, caretOffset, open.FromMenu, open.SendEnter, open.Session, timer);
             _fieldPrompt!.ShowWaiting();
             return;
         }
 
-        await DeliverAsync(target, text, caretOffset, open.FromMenu).ConfigureAwait(false);
+        await DeliverAsync(target, text, caretOffset, open.FromMenu, open.SendEnter).ConfigureAwait(false);
     }
 
-    private async Task DeliverAsync(ActiveTarget target, string text, int caretOffset, bool fromMenu)
+    private async Task DeliverAsync(ActiveTarget target, string text, int caretOffset, bool fromMenu, bool sendEnter)
     {
-        var result = await ExpandAsync(target, text, 0, fromMenu, caretOffset).ConfigureAwait(false);
+        var result = await ExpandAsync(target, text, 0, fromMenu, caretOffset, sendEnter).ConfigureAwait(false);
         if (result is { Succeeded: true } or { InputSent: true })
         {
             Record(new FieldsClosed(Now, FieldsCloseReason.Inserted));
@@ -138,7 +149,7 @@ public sealed partial class ExpansionEngine
             {
                 StopWaiting();
                 _fieldPrompt!.Cancel(); // the "go back" message has done its job
-                await DeliverAsync(current!, waiting.Text, waiting.CaretOffset, waiting.FromMenu).ConfigureAwait(false);
+                await DeliverAsync(current!, waiting.Text, waiting.CaretOffset, waiting.FromMenu, waiting.SendEnter).ConfigureAwait(false);
             }
         }
 
@@ -178,12 +189,21 @@ public sealed partial class ExpansionEngine
         }
 
         var deadline = TimeProvider.System.GetTimestamp();
+        var restored = false;
         while (true)
         {
             var current = await CaptureTargetAsync().ConfigureAwait(false);
             if (IsSameField(original, current))
             {
                 return current;
+            }
+
+            if (!restored && IsSameWindowOtherField(original, current))
+            {
+                // The value was copied from the same page (2026-10-08): put the focus back instead of waiting for a click.
+                restored = true;
+                await Task.Run(() => _resolver.RestoreField(original), _stopping).ConfigureAwait(false);
+                continue;
             }
 
             if (TimeProvider.System.GetElapsedTime(deadline) >= _options.FocusReturnTimeout)
@@ -197,6 +217,14 @@ public sealed partial class ExpansionEngine
     }
 
     private static readonly TimeSpan FocusReturnPoll = TimeSpan.FromMilliseconds(40);
+
+    private static readonly TimeSpan BookmarkSettle = TimeSpan.FromMilliseconds(60);
+
+    private static bool IsSameWindowOtherField(ActiveTarget original, ActiveTarget? current) =>
+        current is not null
+        && current.WindowHandle == original.WindowHandle
+        && current.ProcessId == original.ProcessId
+        && original.Control.ElementId is not null;
 
     /// <summary>Same window, control and (when known) UI Automation element: browser tabs share one window.</summary>
     private static bool IsSameField(ActiveTarget original, ActiveTarget? current) =>
@@ -230,11 +258,12 @@ public sealed partial class ExpansionEngine
     private void OnFieldsFinished(int session, IReadOnlyDictionary<string, string>? values) =>
         _inbox.Writer.TryWrite(new FieldsFinished(session, values));
 
-    private sealed record OpenFields(ActiveTarget Target, ParsedTemplate Template, string Trailing, bool FromMenu, int Session);
+    private sealed record OpenFields(ActiveTarget Target, ParsedTemplate Template, string Trailing, bool FromMenu, bool SendEnter, int Session);
 
     private sealed record FieldsFinished(int Session, IReadOnlyDictionary<string, string>? Values) : EngineWork;
 
-    private sealed record Waiting(ActiveTarget Target, string Text, int CaretOffset, bool FromMenu, int Session, ITimer Timer);
+    private sealed record Waiting(
+        ActiveTarget Target, string Text, int CaretOffset, bool FromMenu, bool SendEnter, int Session, ITimer Timer);
 
     private sealed record WaitElapsed(int Session) : EngineWork;
 
