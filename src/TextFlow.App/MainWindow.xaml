@@ -20,7 +20,7 @@
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                 <Image x:Name="TitleBarIcon" Width="18" Height="18" />
                 <TextBlock Text="TextFlow" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
-                <TextBlock Text="v0.1 · en desarrollo" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.55" VerticalAlignment="Center" />
+                <TextBlock x:Name="VersionText" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.55" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 

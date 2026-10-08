@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using TextFlow.App.Engine;
 using TextFlow.App.Fields;
 using TextFlow.App.Menu;
+using TextFlow.App.Updates;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Input;
 using TextFlow.Infrastructure.Diagnostics;
@@ -18,7 +19,7 @@ namespace TextFlow.App;
 /// </summary>
 public partial class App : Application, IDisposable
 {
-    private const string InstanceName = "TextFlow";
+    internal const string InstanceName = "TextFlow";
 
     /// <summary>App icon next to the exe (copied by the csproj); window, taskbar and tray use it.</summary>
     internal static readonly string IconFile = Path.Combine(AppContext.BaseDirectory, "Assets", "TextFlow.ico");
@@ -35,6 +36,7 @@ public partial class App : Application, IDisposable
     private AppSettings _settings = new();
     private StartupRegistration? _startup;
     private GlobalHotkey? _pauseHotkey;
+    private AppUpdater? _updater;
     private MainWindow? _window;
     private bool _exiting;
 
@@ -77,6 +79,18 @@ public partial class App : Application, IDisposable
     internal IReadOnlyList<string> ExcludedProcesses => _settings.ExcludedProcesses ?? [];
 
     internal bool StartsWithWindows => _startup?.IsEnabled ?? false;
+
+    /// <summary>Version downloaded and waiting for "Reiniciar y actualizar"; null when there is none.</summary>
+    internal string? UpdateVersion => _updater?.ReadyVersion;
+
+    /// <summary>Closes TextFlow; Velopack applies the downloaded update and starts it again.</summary>
+    internal void RestartToUpdate()
+    {
+        if (_updater?.ApplyOnExit() == true)
+        {
+            _ = ExitAsync();
+        }
+    }
 
     /// <summary>Owner window for file pickers and dialogs.</summary>
     internal nint MainWindowHandle => _window is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_window);
@@ -239,6 +253,15 @@ public partial class App : Application, IDisposable
         ApplyStartWithWindows(_settings.StartWithWindows);
 
         StartPauseHotkey(ui, tray);
+
+        var updater = new AppUpdater(RecordFault);
+        updater.UpdateReady += () => ui.TryEnqueue(() =>
+        {
+            tray.SetUpdateVersion(updater.ReadyVersion);
+            _window?.Refresh();
+        });
+        updater.Start();
+        _updater = updater;
     }
 
     /// <summary>Optional: if it cannot be created TextFlow keeps running and pauses from the tray.</summary>
@@ -394,6 +417,9 @@ public partial class App : Application, IDisposable
             case TrayCommand.ToggleStartWithWindows:
                 ToggleStartWithWindows();
                 break;
+            case TrayCommand.Update:
+                RestartToUpdate();
+                break;
             case TrayCommand.Exit:
                 _ = ExitAsync();
                 break;
@@ -439,6 +465,7 @@ public partial class App : Application, IDisposable
         _exiting = true;
         try
         {
+            _updater?.Dispose();
             _pauseHotkey?.Dispose();
             _tray?.Dispose();
             if (_engine is not null)

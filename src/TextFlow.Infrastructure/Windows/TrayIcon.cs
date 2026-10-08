@@ -13,6 +13,7 @@ public enum TrayCommand
     Open,
     TogglePause,
     ToggleStartWithWindows,
+    Update,
     Exit,
 }
 
@@ -29,6 +30,7 @@ public sealed partial class TrayIcon : IDisposable
     private const uint PauseId = 2;
     private const uint ExitId = 3;
     private const uint StartupId = 4;
+    private const uint UpdateId = 5;
 
     private readonly MessageLoopThread _thread;
     private readonly string? _activeIconFile;
@@ -43,6 +45,7 @@ public sealed partial class TrayIcon : IDisposable
     private volatile bool _paused;
     private volatile bool _startWithWindows;
     private volatile string? _pauseShortcut;
+    private volatile string? _updateVersion;
     private volatile bool _added;
     private volatile bool _disposed;
 
@@ -85,6 +88,9 @@ public sealed partial class TrayIcon : IDisposable
 
     /// <summary>Shortcut shown right-aligned next to "Pausar/Reanudar" (null hides it).</summary>
     public void SetPauseShortcut(string? shortcut) => _pauseShortcut = shortcut;
+
+    /// <summary>Shows "Reiniciar y actualizar a {version}" at the top of the menu (null hides it).</summary>
+    public void SetUpdateVersion(string? version) => _updateVersion = version;
 
     /// <summary>Check mark of the "Iniciar con Windows" entry.</summary>
     public void SetStartWithWindows(bool enabled) => _startWithWindows = enabled;
@@ -171,6 +177,12 @@ public sealed partial class TrayIcon : IDisposable
         var menu = PInvoke.CreatePopupMenu();
         try
         {
+            if (_updateVersion is { } version)
+            {
+                Append(menu, UpdateId, $"Reiniciar y actualizar a {version}");
+                PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, (PCWSTR)null);
+            }
+
             Append(menu, OpenId, "Abrir TextFlow");
             var pause = _paused ? "Reanudar expansiones" : "Pausar expansiones";
             Append(menu, PauseId, _pauseShortcut is { } shortcut ? $"{pause}\t{shortcut}" : pause);
@@ -202,6 +214,9 @@ public sealed partial class TrayIcon : IDisposable
                     break;
                 case StartupId:
                     Raise(TrayCommand.ToggleStartWithWindows);
+                    break;
+                case UpdateId:
+                    Raise(TrayCommand.Update);
                     break;
                 case ExitId:
                     Raise(TrayCommand.Exit);

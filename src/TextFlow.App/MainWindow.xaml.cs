@@ -51,6 +51,7 @@ public sealed partial class MainWindow : Window
             presenter.PreferredMinimumWidth = (int)Math.Ceiling(MinimumWidth * scale);
             presenter.PreferredMinimumHeight = (int)Math.Ceiling(MinimumHeight * scale);
         }
+        VersionText.Text = $"v{typeof(App).Assembly.GetName().Version?.ToString(3)}";
         ApplyTheme(App.Current.Theme);
         Navigate("home");
     }

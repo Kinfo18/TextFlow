@@ -22,7 +22,11 @@ public sealed partial class HomePage : Page, IRefreshable
         SectionBody.Text = HomeStatus() + (_actionError is { } error ? $"\n\n{error}" : string.Empty);
         HomeActions.Visibility = App.Current.Engine is not null ? Visibility.Visible : Visibility.Collapsed;
         ReloadLibraryButton.IsEnabled = App.Current.Library?.Status.SourcePath is not null;
+        UpdateBar.IsOpen = App.Current.UpdateVersion is not null;
+        UpdateBar.Message = $"TextFlow {App.Current.UpdateVersion} ya está descargado. Se aplica al reiniciar (unos segundos).";
     }
+
+    private void OnRestartToUpdate(object sender, RoutedEventArgs e) => App.Current.RestartToUpdate();
 
     /// <remarks>
     /// async void: an escaping exception would freeze WinUI (its error reporting deadlocked here), so every failure
