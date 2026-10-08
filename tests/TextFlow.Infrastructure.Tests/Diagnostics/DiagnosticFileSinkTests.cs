@@ -102,4 +102,59 @@ public sealed class DiagnosticFileSinkTests : IDisposable
         Assert.Equal(DiagnosticFileSink.RecentCapacity, recent.Count);
         Assert.Equal(DiagnosticFileSink.RecentCapacity + 9, ((HookReinstalled)recent[^1]).TimesThisSession);
     }
+
+    [Fact]
+    public void Read_ReturnsTheDaysEvents_WhileTheFileIsStillOpen()
+    {
+        using var sink = Sink();
+        sink.Record(Expansion(Day1));
+        sink.Record(new MenuClosed(Day1, MenuCloseReason.Escape));
+
+        var events = sink.Read(DateOnly.FromDateTime(Day1.Date));
+
+        Assert.Equal(2, events.Count);
+        Assert.Equal(Expansion(Day1), events[0]);
+        Assert.Equal(new MenuClosed(Day1, MenuCloseReason.Escape), events[1]);
+    }
+
+    [Fact]
+    public void Read_SkipsBrokenAndUnknownLines()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllLines(Path.Combine(_directory, "textflow-20261002.jsonl"),
+        [
+            "{\"event\":\"HookReinstalled\",\"TimesThisSession\":3,\"At\":\"2026-10-02T09:30:00-05:00\"}",
+            "{\"event\":\"SomethingFromAFutureVersion\",\"At\":\"2026-10-02T09:30:00-05:00\"}",
+            "{not json",
+            string.Empty,
+        ]);
+        using var sink = Sink();
+
+        var events = sink.Read(new DateOnly(2026, 10, 2));
+
+        Assert.Equal(3, ((HookReinstalled)Assert.Single(events)).TimesThisSession);
+    }
+
+    [Fact]
+    public void Read_DayWithoutLog_IsEmpty()
+    {
+        using var sink = Sink();
+
+        Assert.Empty(sink.Read(new DateOnly(2026, 9, 1)));
+    }
+
+    [Fact]
+    public void Days_ListsTheKeptLogs_NewestFirst()
+    {
+        var day2 = Day1.AddDays(1);
+        using (var first = Sink())
+        {
+            first.Record(Expansion(Day1));
+        }
+
+        using var sink = Sink(() => day2);
+        sink.Record(Expansion(day2));
+
+        Assert.Equal([DateOnly.FromDateTime(day2.Date), DateOnly.FromDateTime(Day1.Date)], sink.Days());
+    }
 }

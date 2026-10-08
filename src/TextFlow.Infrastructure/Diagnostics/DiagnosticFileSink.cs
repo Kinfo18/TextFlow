@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using TextFlow.Core.Diagnostics;
 
@@ -22,6 +23,11 @@ public sealed class DiagnosticFileSink : IDiagnosticSink, IDisposable
     {
         Converters = { new JsonStringEnumConverter() },
     };
+
+    /// <summary>Event name (as written in the "event" field) → its record type, for reading logs back.</summary>
+    private static readonly Dictionary<string, Type> EventTypes = typeof(DiagnosticEvent).Assembly.GetTypes()
+        .Where(t => t.IsSubclassOf(typeof(DiagnosticEvent)) && !t.IsAbstract)
+        .ToDictionary(t => t.Name, StringComparer.Ordinal);
 
     private readonly string _directory;
     private readonly Func<DateTimeOffset> _clock;
@@ -64,6 +70,40 @@ public sealed class DiagnosticFileSink : IDiagnosticSink, IDisposable
         }
     }
 
+    /// <summary>Days that still have a log (at most <see cref="RetentionDays"/> + today), newest first.</summary>
+    public IReadOnlyList<DateOnly> Days() =>
+        Directory.EnumerateFiles(_directory, $"{Prefix}*{Extension}")
+            .Select(DayOf)
+            .OfType<DateOnly>()
+            .OrderDescending()
+            .ToArray();
+
+    /// <summary>
+    /// The events of <paramref name="day"/> (H5.4). Lines that are broken or come from an event this version does not
+    /// know are skipped: a log must never stop the Diagnóstico page from opening.
+    /// </summary>
+    public IReadOnlyList<DiagnosticEvent> Read(DateOnly day)
+    {
+        var path = PathFor(day);
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        // Today's file is open for appending: share it instead of waiting for the writer.
+        using var reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+        var events = new List<DiagnosticEvent>();
+        while (reader.ReadLine() is { } line)
+        {
+            if (Parse(line) is { } diagnostic)
+            {
+                events.Add(diagnostic);
+            }
+        }
+
+        return events;
+    }
+
     public void Dispose()
     {
         lock (_gate)
@@ -80,12 +120,41 @@ public sealed class DiagnosticFileSink : IDiagnosticSink, IDisposable
         return node.ToJsonString();
     }
 
+    private static DiagnosticEvent? Parse(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return null;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(line);
+            return node?["event"]?.GetValue<string>() is { } name && EventTypes.TryGetValue(name, out var type)
+                ? node.Deserialize(type, Json) as DiagnosticEvent
+                : null;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    private string PathFor(DateOnly day) =>
+        Path.Combine(_directory, $"{Prefix}{day.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}{Extension}");
+
+    private static DateOnly? DayOf(string file)
+    {
+        var stamp = Path.GetFileNameWithoutExtension(file)[Prefix.Length..];
+        return DateOnly.TryParseExact(stamp, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day) ? day : null;
+    }
+
     private StreamWriter WriterFor(DateOnly day)
     {
         if (_writer is null || day != _writerDay)
         {
             _writer?.Dispose();
-            var path = Path.Combine(_directory, $"{Prefix}{day.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}{Extension}");
+            var path = PathFor(day);
             _writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
             _writerDay = day;
         }
@@ -97,9 +166,7 @@ public sealed class DiagnosticFileSink : IDiagnosticSink, IDisposable
     {
         foreach (var file in Directory.EnumerateFiles(_directory, $"{Prefix}*{Extension}"))
         {
-            var stamp = Path.GetFileNameWithoutExtension(file)[Prefix.Length..];
-            if (DateOnly.TryParseExact(stamp, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)
-                && day < today.AddDays(-RetentionDays))
+            if (DayOf(file) is { } day && day < today.AddDays(-RetentionDays))
             {
                 File.Delete(file);
             }
