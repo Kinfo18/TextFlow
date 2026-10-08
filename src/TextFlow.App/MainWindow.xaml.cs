@@ -22,7 +22,7 @@ public sealed partial class MainWindow : Window
         ["diagnostics"] = () => new DiagnosticsPage(),
     };
 
-    private const int MinimumWidth = 900;
+    private const int MinimumWidth = 720;
     private const int MinimumHeight = 560;
 
     private string? _current;
@@ -45,7 +45,7 @@ public sealed partial class MainWindow : Window
         }
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            // Below this the three Snippets panes cannot all fit (tree, list and editor minimums plus margins).
+            // Below this the two Snippets columns cannot fit (tree and list/editor minimums, margins and the compact pane).
             // The presenter works in physical pixels: scale the logical minimum (125 % on the dev laptop).
             var scale = Menu.PopupInterop.DpiScale(WinRT.Interop.WindowNative.GetWindowHandle(this));
             presenter.PreferredMinimumWidth = (int)Math.Ceiling(MinimumWidth * scale);

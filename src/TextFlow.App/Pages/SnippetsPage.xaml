@@ -21,19 +21,19 @@
     </Page.Resources>
 
     <Grid Padding="24,16,24,16" ColumnSpacing="12" RowSpacing="12">
+        <!-- Groups on the left; the group's snippets above the editor, so a narrow window keeps two readable columns. -->
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="2*" MinHeight="160" />
+            <RowDefinition Height="3*" MinHeight="240" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <!-- Proportional so the editor never falls off a narrow window (MainWindow enforces a minimum width). -->
             <ColumnDefinition Width="2*" MinWidth="200" />
-            <ColumnDefinition Width="2.4*" MinWidth="240" />
-            <ColumnDefinition Width="4*" MinWidth="300" />
+            <ColumnDefinition Width="5*" MinWidth="320" />
         </Grid.ColumnDefinitions>
 
         <!-- Hand-filled XXX blanks can become template fields (H5.2) -->
-        <InfoBar x:Name="BlankHint" Grid.ColumnSpan="3" IsOpen="False" Severity="Informational" IsClosable="True"
+        <InfoBar x:Name="BlankHint" Grid.ColumnSpan="2" IsOpen="False" Severity="Informational" IsClosable="True"
                  Message="Conviértelos en campos: al expandir, se rellenan solos con lo que copies.">
             <InfoBar.ActionButton>
                 <Button Content="Convertir…" Click="OnConvertBlanks" />
@@ -41,7 +41,7 @@
         </InfoBar>
 
         <!-- Groups -->
-        <Grid Grid.Row="1" RowSpacing="10">
+        <Grid Grid.Row="1" Grid.RowSpan="2" RowSpacing="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -50,8 +50,12 @@
                             TextChanged="OnSearchChanged" />
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
-                <TreeView x:Name="GroupTree" SelectionMode="Single" CanDragItems="True" AllowDrop="True" CanReorderItems="True"
-                          ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" ContextRequested="OnTreeContextRequested" />
+                <!-- Horizontal only: long names and deep subgroups scroll sideways; the tree keeps its own vertical scroll. -->
+                <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                    <TreeView x:Name="GroupTree" SelectionMode="Single" CanDragItems="True" AllowDrop="True" CanReorderItems="True"
+                              ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" ContextRequested="OnTreeContextRequested" />
+                </ScrollViewer>
             </Border>
         </Grid>
 
@@ -88,7 +92,7 @@
         </Grid>
 
         <!-- Editor (H3.3) -->
-        <Border Grid.Row="1" Grid.Column="2" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+        <Border Grid.Row="2" Grid.Column="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
             <Grid>
                 <Grid.RowDefinitions>
