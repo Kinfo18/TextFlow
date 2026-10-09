@@ -30,11 +30,11 @@
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <ComboBox x:Name="DayChoice" MinWidth="200" SelectionChanged="OnDayChanged" />
-                <Button Click="OnRefresh" ToolTipService.ToolTip="Actualizar">
+                <ComboBox x:Name="DayChoice" AutomationProperties.Name="Día" MinWidth="200" SelectionChanged="OnDayChanged" />
+                <Button Click="OnRefresh" AutomationProperties.Name="Actualizar" ToolTipService.ToolTip="Actualizar">
                     <FontIcon Glyph="&#xE72C;" FontSize="14" />
                 </Button>
-                <Button Click="OnOpenLogs" ToolTipService.ToolTip="Para traer los registros del PC de trabajo">
+                <Button Click="OnOpenLogs" AutomationProperties.Name="Abrir carpeta de registros" ToolTipService.ToolTip="Para traer los registros del PC de trabajo">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE838;" FontSize="14" />
                         <TextBlock Text="Abrir carpeta de registros" />

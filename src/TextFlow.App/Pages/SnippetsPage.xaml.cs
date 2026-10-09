@@ -1,5 +1,6 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using TextFlow.Core.Library;
@@ -176,7 +177,12 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         var stack = new StackPanel { Padding = new Thickness(4, 6, 4, 6), Opacity = snippet.Enabled ? 1 : 0.5 };
         stack.Children.Add(abbreviation);
         stack.Children.Add(secondLine);
-        return new ListViewItem { Content = stack };
+        var item = new ListViewItem { Content = stack };
+        // The visible content is a panel, so screen readers would announce nothing without a name.
+        var name = snippet.Name.Length > 0 && snippet.Name != abbreviation.Text ? $", {snippet.Name}" : string.Empty;
+        var state = snippet.Enabled ? string.Empty : ", desactivado";
+        AutomationProperties.SetName(item, $"{abbreviation.Text}{name}: {secondLine.Text}{state}");
+        return item;
     }
 
     private static string Preview(LibrarySnippet snippet)

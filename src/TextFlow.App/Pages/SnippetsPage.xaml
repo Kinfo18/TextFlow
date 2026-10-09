@@ -75,7 +75,7 @@
                     <TextBlock x:Name="ListSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button x:Name="NewSnippetButton" Click="OnNewSnippet" ToolTipService.ToolTip="Nuevo comando en este grupo">
+                    <Button x:Name="NewSnippetButton" AutomationProperties.Name="Nuevo comando" Click="OnNewSnippet" ToolTipService.ToolTip="Nuevo comando en este grupo">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE710;" FontSize="12" />
                             <TextBlock Text="Nuevo" />
@@ -172,7 +172,7 @@
                     <Button x:Name="DiscardButton" Grid.Column="1" Click="OnDiscard" IsEnabled="False">Descartar</Button>
                     <TextBlock x:Name="EditorMessage" Grid.Column="2" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}" Margin="8,0,8,0" />
-                    <Button x:Name="DeleteButton" Grid.Column="3" Click="OnDelete">
+                    <Button x:Name="DeleteButton" AutomationProperties.Name="Eliminar comando" Grid.Column="3" Click="OnDelete">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE74D;" FontSize="12" />
                             <TextBlock Text="Eliminar" />

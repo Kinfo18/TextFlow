@@ -40,7 +40,7 @@
                         <Slider x:Name="VolumeSlider" Header="Volumen" Minimum="0" Maximum="100" StepFrequency="5"
                                 TickFrequency="25" TickPlacement="Outside" ValueChanged="OnVolumeChanged"
                                 KeyUp="OnVolumeKeyUp" />
-                        <Button x:Name="TestSoundButton" Grid.Column="1" VerticalAlignment="Bottom" Margin="0,0,0,6"
+                        <Button x:Name="TestSoundButton" AutomationProperties.Name="Probar sonido" Grid.Column="1" VerticalAlignment="Bottom" Margin="0,0,0,6"
                                 Click="OnTestSound">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE768;" FontSize="12" />
