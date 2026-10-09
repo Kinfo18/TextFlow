@@ -40,6 +40,7 @@ public sealed partial class ExpansionEngine
     private int _menuSession;
     private MenuCloseReason? _closeReason;
     private ITimer? _pendingTimer;
+    private ITimer? _menuDelayTimer;
     private CancellationToken _stopping;
 
     public ExpansionEngine(
@@ -239,6 +240,7 @@ public sealed partial class ExpansionEngine
         FocusChanged when _open is null => RefreshCaptureUnlessSupersededAsync(),
         TypingActivity => WarmFeedback(),
         MenuFinished finished when _open?.Session == finished.Session => FinishMenuAsync(finished.Step),
+        MenuDelayElapsed elapsed when _open is { Shown: false } && _open.Session == elapsed.Session => RevealMenu(),
         FieldsFinished fields => FinishFieldsAsync(fields),
         WaitElapsed elapsed => GiveUpWaitingAsync(elapsed),
         PendingElapsed elapsed => _hook.FlushPendingAsync(elapsed.Version),
@@ -337,23 +339,66 @@ public sealed partial class ExpansionEngine
             return;
         }
 
-        var caret = target.Control.CaretBounds;
-        _open = new OpenMenu(target, match, ++_menuSession);
+        _open = new OpenMenu(target, match, menu, ++_menuSession);
         _closeReason = null;
-        _hook.MenuMode = true;
-        _menu.Show(menu, caret ?? _pointer.CursorAnchor(), target.Monitor, _open.Session);
-        Record(new MenuShown(Now, target.ProcessName, AnchoredToCaret: caret is not null));
+        _hook.MenuMode = true; // at once: a choice typed from memory ("lc" + '1') must not reach the app
+        var delay = Volatile.Read(ref _options).MenuDelay;
+        if (delay <= TimeSpan.Zero)
+        {
+            await RevealMenu().ConfigureAwait(false);
+            return;
+        }
+
+        var session = _open.Session;
+        DisposeMenuDelayTimer();
+        _menuDelayTimer = _time.CreateTimer(
+            _ => _inbox.Writer.TryWrite(new MenuDelayElapsed(session)), null, delay, Timeout.InfiniteTimeSpan);
     }
 
-    private Task SendToMenu(MenuInput input)
+    private Task RevealMenu()
     {
+        DisposeMenuDelayTimer();
+        var open = _open!;
+        _open = open with { Shown = true };
+        var caret = open.Target.Control.CaretBounds;
+        _menu.Show(open.Menu, caret ?? _pointer.CursorAnchor(), open.Target.Monitor, open.Session);
+        Record(new MenuShown(Now, open.Target.ProcessName, AnchoredToCaret: caret is not null));
+        return Task.CompletedTask;
+    }
+
+    private async Task SendToMenu(MenuInput input)
+    {
+        if (_open is { Shown: false })
+        {
+            if (input.Kind == MenuInputKind.Escape)
+            {
+                DropUnshownMenu(); // nothing on screen to close
+                return;
+            }
+
+            await RevealMenu().ConfigureAwait(false); // a choice typed from memory
+        }
+
         _feedback.Warm(); // menu keys are swallowed (no TypingActivity): keep the audio device awake for the choice
         _menu.Send(input);
-        return Task.CompletedTask;
+    }
+
+    /// <summary>The user went on before the menu was drawn: leave menu mode as if it never opened (no diagnostics).</summary>
+    private void DropUnshownMenu()
+    {
+        DisposeMenuDelayTimer();
+        _open = null;
+        _hook.MenuMode = false;
     }
 
     private Task InterruptMenu(MenuInterrupted interrupted)
     {
+        if (_open is { Shown: false })
+        {
+            DropUnshownMenu(); // typing on through "dirección", or a click elsewhere
+            return Task.CompletedTask;
+        }
+
         if (interrupted is { ClickX: { } x, ClickY: { } y })
         {
             if (_menu.Contains(x, y))
@@ -423,6 +468,12 @@ public sealed partial class ExpansionEngine
             return; // leaving MenuMode untouched: turning it off clears the hook's pending trigger ("cp" before "cp1")
         }
 
+        if (!_open.Shown)
+        {
+            DropUnshownMenu();
+            return;
+        }
+
         _hook.MenuMode = false;
         _open = null;
         _menu.Cancel();
@@ -430,6 +481,12 @@ public sealed partial class ExpansionEngine
         {
             Record(new MenuClosed(Now, closed));
         }
+    }
+
+    private void DisposeMenuDelayTimer()
+    {
+        _menuDelayTimer?.Dispose();
+        _menuDelayTimer = null;
     }
 
     private void DisposePendingTimer()
@@ -547,13 +604,15 @@ public sealed partial class ExpansionEngine
 
     private DateTimeOffset Now => _time.GetUtcNow();
 
-    private sealed record OpenMenu(ActiveTarget Target, TriggerMatch Match, int Session);
+    private sealed record OpenMenu(ActiveTarget Target, TriggerMatch Match, GroupMenu Menu, int Session, bool Shown = false);
 
     private abstract record EngineWork;
 
     private sealed record MenuFinished(int Session, MenuStep Step) : EngineWork;
 
     private sealed record PendingElapsed(int Version) : EngineWork;
+
+    private sealed record MenuDelayElapsed(int Session) : EngineWork;
 
     private sealed record PauseChanged(bool Paused) : EngineWork;
 

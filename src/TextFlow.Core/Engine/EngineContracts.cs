@@ -76,4 +76,10 @@ public sealed record ExpansionEngineOptions(
 {
     public static ExpansionEngineOptions Default { get; } = new(
         TimeSpan.FromMilliseconds(600), TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(400), TimeSpan.FromMinutes(2));
+
+    /// <summary>
+    /// A group menu is drawn only after this pause, so typing on through a word that starts with a group abbreviation
+    /// ("dir" in "dirección") never flashes it. Menu keys typed from memory before it show the menu at once.
+    /// </summary>
+    public TimeSpan MenuDelay { get; init; } = TimeSpan.FromMilliseconds(250);
 }
