@@ -52,7 +52,7 @@ internal static class AbbreviationWarningsView
         {
             Glyph = "\uE7BA", // Warning
             FontSize = 12,
-            Foreground = (Brush)Application.Current.Resources["SystemFillColorCautionBrush"],
+            Foreground = ThemeBrushes.Get("CautionTextBrush"),
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 2, 0, 0),
         });

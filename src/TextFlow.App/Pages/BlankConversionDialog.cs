@@ -76,8 +76,8 @@ internal static class BlankConversionDialog
                 Child = card,
                 CornerRadius = new CornerRadius(8),
                 BorderThickness = new Thickness(1),
-                BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
-                Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
+                BorderBrush = ThemeBrushes.Get("CardStrokeColorDefaultBrush"),
+                Background = ThemeBrushes.Get("CardBackgroundFillColorDefaultBrush"),
             };
 
             card.Children.Add(new TextBlock
@@ -110,7 +110,7 @@ internal static class BlankConversionDialog
             });
             _error = new TextBlock
             {
-                Foreground = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+                Foreground = ThemeBrushes.Get("SystemFillColorCriticalBrush"),
                 TextWrapping = TextWrapping.Wrap,
                 Visibility = Visibility.Collapsed,
             };
@@ -159,7 +159,7 @@ internal static class BlankConversionDialog
                     {
                         Text = $" XXX {i + 1} ",
                         FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                        Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
+                        Foreground = ThemeBrushes.Get("AccentTextFillColorPrimaryBrush"),
                     });
                 }
             }

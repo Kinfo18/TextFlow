@@ -20,7 +20,7 @@ public sealed partial class SnippetsPage
         var name = new TextBox { Header = "Nombre del dato", PlaceholderText = "Por ejemplo: cliente, monto, numero_pedido" };
         var error = new TextBlock
         {
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            Foreground = ThemeBrushes.Get("SystemFillColorCriticalBrush"),
             TextWrapping = TextWrapping.Wrap,
         };
         var content = new StackPanel { Spacing = 8, MinWidth = 320 };

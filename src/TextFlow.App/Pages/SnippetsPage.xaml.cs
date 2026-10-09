@@ -169,7 +169,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         {
             Text = snippet.Abbreviations.Count > 0 ? snippet.Abbreviations[0] : snippet.Name,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"],
+            Foreground = ThemeBrushes.Get("AccentTextFillColorPrimaryBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         var secondLine = new TextBlock { Text = path ?? Preview(snippet), Opacity = 0.65, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };

@@ -27,7 +27,7 @@ internal static class GroupDialog
         };
         var error = new TextBlock
         {
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            Foreground = ThemeBrushes.Get("SystemFillColorCriticalBrush"),
             TextWrapping = TextWrapping.Wrap,
         };
 

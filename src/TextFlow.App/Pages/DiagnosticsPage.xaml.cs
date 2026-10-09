@@ -114,7 +114,7 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
         using var process = Process.GetCurrentProcess();
         var mb = process.WorkingSet64 / (1024.0 * 1024.0);
         MemoryValue.Text = $"{mb:0} MB";
-        SetValueBrush(MemoryValue, mb <= MemoryTargetMb ? null : "SystemFillColorCautionBrush");
+        SetValueBrush(MemoryValue, mb <= MemoryTargetMb ? null : "CautionTextBrush");
         MemoryLabel.Text = $"Memoria ahora (objetivo < {MemoryTargetMb:0} MB)";
     }
 
@@ -122,7 +122,7 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
     {
         ExpansionsValue.Text = summary.Expansions.ToString("N0", Es);
         SuccessValue.Text = summary.SuccessRate is { } rate ? rate.ToString("P1", Es) : "—";
-        SetValueBrush(SuccessValue, summary.SuccessRate is { } r && r < SuccessTarget ? "SystemFillColorCautionBrush" : null);
+        SetValueBrush(SuccessValue, summary.SuccessRate is { } r && r < SuccessTarget ? "CautionTextBrush" : null);
         LatencyValue.Text = Ms(summary.MedianMs);
 
         Fill(InsertionLines,
@@ -131,7 +131,7 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
             Line("La más lenta", Ms(summary.MaxMs)),
             .. summary.Failures.Count == 0 && summary.Expansions > 0
                 ? [Line("Fallos", "ninguno", "SystemFillColorSuccessBrush")]
-                : summary.Failures.OrderByDescending(f => f.Value).Select(f => Line(StatusNames[f.Key], Count(f.Value), "SystemFillColorCautionBrush")),
+                : summary.Failures.OrderByDescending(f => f.Value).Select(f => Line(StatusNames[f.Key], Count(f.Value), "CautionTextBrush")),
             .. summary.Rejections.OrderByDescending(r => r.Value).Select(r => Line($"No insertada: {RejectionNames[r.Key]}", Count(r.Value))),
         ]);
 
@@ -150,11 +150,11 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
 
         Fill(StabilityLines,
         [
-            Line("Teclado reconectado (hook)", Count(summary.HookReinstalls), summary.HookReinstalls == 0 ? "SystemFillColorSuccessBrush" : "SystemFillColorCautionBrush"),
-            Line("Errores internos", Count(summary.Faults), summary.Faults == 0 ? "SystemFillColorSuccessBrush" : "SystemFillColorCautionBrush"),
+            Line("Teclado reconectado (hook)", Count(summary.HookReinstalls), summary.HookReinstalls == 0 ? "SystemFillColorSuccessBrush" : "CautionTextBrush"),
+            Line("Errores internos", Count(summary.Faults), summary.Faults == 0 ? "SystemFillColorSuccessBrush" : "CautionTextBrush"),
             Line("Arranques", Count(summary.Startups)),
             Line($"Último arranque (objetivo < {StartupTargetMs / 1000:0} s)", Ms(summary.LastStartupMs),
-                summary.LastStartupMs is > StartupTargetMs ? "SystemFillColorCautionBrush" : null),
+                summary.LastStartupMs is > StartupTargetMs ? "CautionTextBrush" : null),
         ]);
     }
 
@@ -197,7 +197,7 @@ public sealed partial class DiagnosticsPage : Page, IRefreshable
         }
     }
 
-    private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
+    private static Brush Brush(string key) => ThemeBrushes.Get(key);
 
     private static string Ms(double? ms) => ms switch
     {
