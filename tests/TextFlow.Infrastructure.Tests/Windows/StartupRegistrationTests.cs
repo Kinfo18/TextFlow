@@ -69,4 +69,62 @@ public sealed class StartupRegistrationTests : IDisposable
     {
         Create().Apply(enabled: false);
     }
+
+    [Fact]
+    public void Apply_True_WithoutTakeOver_LeavesTheEntryOfAnotherCopyThatExists()
+    {
+        var installed = Path.GetTempFileName(); // the installed copy's exe, present on disk
+        try
+        {
+            var other = Create(installed);
+            other.Apply(enabled: true);
+
+            Create().Apply(enabled: true, takeOverOtherCopy: false); // a dev build or portable zip starting up
+
+            Assert.True(other.IsEnabled);
+        }
+        finally
+        {
+            File.Delete(installed);
+        }
+    }
+
+    [Fact]
+    public void Apply_True_WithoutTakeOver_StillRepairsAnEntryWhoseExeIsGone()
+    {
+        Create(@"C:\Old\TextFlow.exe").Apply(enabled: true);
+        var current = Create();
+
+        current.Apply(enabled: true, takeOverOtherCopy: false);
+
+        Assert.True(current.IsEnabled);
+    }
+
+    [Fact]
+    public void Apply_True_WithTakeOver_ReplacesTheEntryOfAnotherCopy()
+    {
+        var other = Path.GetTempFileName();
+        try
+        {
+            Create(other).Apply(enabled: true);
+            var current = Create();
+
+            current.Apply(enabled: true, takeOverOtherCopy: true); // the installed copy, or the user's own toggle
+
+            Assert.True(current.IsEnabled);
+        }
+        finally
+        {
+            File.Delete(other);
+        }
+    }
+
+    [Theory]
+    [InlineData(@"""C:\Apps\TextFlow.exe"" --background", @"C:\Apps\TextFlow.exe")]
+    [InlineData(@"C:\Apps\TextFlow.exe --background", @"C:\Apps\TextFlow.exe")]
+    [InlineData("", null)]
+    public void ExecutableOf_ReadsThePathOfARegisteredCommand(string command, string? expected)
+    {
+        Assert.Equal(expected, StartupRegistration.ExecutableOf(command));
+    }
 }

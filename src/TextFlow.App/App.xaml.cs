@@ -258,7 +258,6 @@ public partial class App : Application, IDisposable
         _tray = tray;
 
         _startup = new StartupRegistration(InstanceName, Environment.ProcessPath!);
-        ApplyStartWithWindows(_settings.StartWithWindows);
 
         StartPauseHotkey(ui, tray);
 
@@ -270,6 +269,9 @@ public partial class App : Application, IDisposable
         });
         updater.Start();
         _updater = updater;
+
+        // After the updater: only the installed copy may point the Run entry at itself on startup.
+        ApplyStartWithWindows(_settings.StartWithWindows, takeOverOtherCopy: updater.IsInstalled);
     }
 
     /// <summary>Optional: if it cannot be created TextFlow keeps running and pauses from the tray.</summary>
@@ -307,11 +309,12 @@ public partial class App : Application, IDisposable
     }
 
     /// <summary>Syncs the Run entry (also repairs its path if the app moved) and the tray check mark.</summary>
-    private void ApplyStartWithWindows(bool enabled)
+    /// <param name="takeOverOtherCopy">True for the user's own choice; on startup, only for the installed copy.</param>
+    private void ApplyStartWithWindows(bool enabled, bool takeOverOtherCopy = true)
     {
         try
         {
-            _startup?.Apply(enabled);
+            _startup?.Apply(enabled, takeOverOtherCopy);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {

@@ -37,13 +37,23 @@ public sealed class StartupRegistration
     }
 
     /// <summary>Registers (or repairs the path of) this executable, or removes the entry.</summary>
-    public void Apply(bool enabled)
+    /// <param name="takeOverOtherCopy">
+    /// False when a copy that is not the installed one (a dev build, the portable zip) syncs at startup: the settings
+    /// file is shared, so without this it would point Windows at itself instead of at the installed TextFlow. An entry
+    /// whose exe no longer exists is repaired either way.
+    /// </param>
+    public void Apply(bool enabled, bool takeOverOtherCopy = true)
     {
         if (enabled)
         {
             if (!IsEnabled)
             {
                 using var key = Registry.CurrentUser.CreateSubKey(_keyPath, writable: true);
+                if (!takeOverOtherCopy && ExecutableOf(key.GetValue(_valueName) as string) is { } other && File.Exists(other))
+                {
+                    return;
+                }
+
                 key.SetValue(_valueName, Command, RegistryValueKind.String);
             }
 
@@ -52,5 +62,24 @@ public sealed class StartupRegistration
 
         using var existing = Registry.CurrentUser.OpenSubKey(_keyPath, writable: true);
         existing?.DeleteValue(_valueName, throwOnMissingValue: false);
+    }
+
+    /// <summary>The exe of a Run command: <c>"C:\x\TextFlow.exe" --background</c> gives <c>C:\x\TextFlow.exe</c>.</summary>
+    public static string? ExecutableOf(string? command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return null;
+        }
+
+        var text = command.Trim();
+        if (text.StartsWith('"'))
+        {
+            var end = text.IndexOf('"', 1);
+            return end > 1 ? text[1..end] : null;
+        }
+
+        var space = text.IndexOf(' ', StringComparison.Ordinal);
+        return space < 0 ? text : text[..space];
     }
 }
