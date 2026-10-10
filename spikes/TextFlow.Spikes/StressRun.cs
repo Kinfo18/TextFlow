@@ -34,11 +34,14 @@ internal static class StressRun
             return 1;
         }
 
-        Console.WriteLine($"{candidates.Count} snippets candidatos; {count} expansiones. Abre un documento VACÍO y enfócalo.");
+        Console.WriteLine($"{candidates.Count} snippets candidatos; {count} expansiones. Enfoca el editor (si tiene texto, se escribe al final).");
         Console.WriteLine("No toques el teclado ni el ratón hasta el final (cambiar de ventana aborta la prueba).");
         await Services.CountdownAsync(CountdownSeconds);
 
         var target = Native.GetForegroundWindow();
+        Native.Tap(Native.VkEnd, ctrl: true); // type after whatever the editor already holds
+        Thread.Sleep(200);
+        var initial = ReadDocument(); // the editor need not be empty: only what this run adds is compared
         var log = new LogTail(Path.Combine(root, "logs"));
         var expected = new StringBuilder();
         var expectedEnds = new List<int>(count);
@@ -72,12 +75,17 @@ internal static class StressRun
             }
         }
 
-        await Task.Delay(1000); // let the last clipboard restore finish before copying the document
-        var actual = CopyDocument();
+        await Task.Delay(1000); // let the last clipboard restore finish before reading the document
+        var actual = ReadDocument() ?? CopyDocument();
         var elapsed = DateTime.Now - started;
 
         Console.WriteLine($"\n\nTiempo: {elapsed:mm\\:ss} · expansiones tecleadas: {count} · sin evento en {ExpansionTimeout.TotalSeconds:0} s: {timeouts}");
         Console.WriteLine(log.Summary());
+        if (initial is not null && actual is not null && actual.StartsWith(initial, StringComparison.Ordinal))
+        {
+            actual = actual[initial.Length..];
+        }
+
         Report(Normalize(expected.ToString()), actual is null ? null : Normalize(actual), expectedEnds);
         return 0;
     }
@@ -152,6 +160,25 @@ internal static class StressRun
         }
     }
 
+    /// <summary>
+    /// The focused editor's whole text through UI Automation (Win11 Notepad, Word, browsers). Ctrl+A/Ctrl+C was not
+    /// reliable: in Win11 Notepad the copy sometimes never reached the clipboard and the report compared old text.
+    /// </summary>
+    private static string? ReadDocument()
+    {
+        try
+        {
+            var focused = System.Windows.Automation.AutomationElement.FocusedElement;
+            return focused?.TryGetCurrentPattern(System.Windows.Automation.TextPattern.Pattern, out var pattern) == true
+                ? ((System.Windows.Automation.TextPattern)pattern).DocumentRange.GetText(-1)
+                : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Windows.Automation.ElementNotAvailableException or COMException)
+        {
+            return null;
+        }
+    }
+
     private static string? CopyDocument()
     {
         Native.Chord(Native.VkControl, 'A');
@@ -159,7 +186,7 @@ internal static class StressRun
         Native.Chord(Native.VkControl, 'C');
         Thread.Sleep(300);
         string? text = null;
-        var thread = new Thread(() => text = Clipboard.ContainsText() ? Clipboard.GetText() : null);
+        var thread = new Thread(() => text = System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null);
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         thread.Join();

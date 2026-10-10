@@ -10,6 +10,13 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>$(WindowsTfm)</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- UIAutomationClient: the stress run reads the document through TextPattern -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UseWPF drops System.IO from the implicit usings (Path would clash with WPF's Shapes.Path). -->
+    <Using Include="System.IO" />
+  </ItemGroup>
 
 </Project>
