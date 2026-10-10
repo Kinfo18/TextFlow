@@ -147,6 +147,7 @@
                                         <MenuFlyoutSeparator />
                                         <MenuFlyoutItem Text="Fecha de hoy" Tag="{}{{date}}" Click="OnInsertToken" />
                                         <MenuFlyoutItem Text="Hora actual" Tag="{}{{time}}" Click="OnInsertToken" />
+                                        <MenuFlyoutItem Text="Lo copiado (portapapeles)" Tag="{}{{clipboard}}" Click="OnInsertToken" />
                                         <MenuFlyoutItem Text="Dónde queda el cursor al expandir" Tag="{}{{cursor}}" Click="OnInsertToken" />
                                     </MenuFlyout>
                                 </DropDownButton.Flyout>
