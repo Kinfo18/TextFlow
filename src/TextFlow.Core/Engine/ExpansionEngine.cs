@@ -119,6 +119,58 @@ public sealed partial class ExpansionEngine
         _inbox.Writer.TryWrite(new PauseChanged(Paused: false));
     }
 
+    /// <summary>
+    /// Command palette (D11), step 1: the field the user is in, captured (and bookmarked so the focus can come back to
+    /// it) before the palette window takes the focus. Null when nothing is focused or UI Automation did not answer.
+    /// </summary>
+    public async Task<ActiveTarget?> CapturePaletteTargetAsync()
+    {
+        var target = await CaptureTargetAsync().ConfigureAwait(false);
+        if (target is not null)
+        {
+            _resolver.BookmarkField(target);
+        }
+
+        return target;
+    }
+
+    /// <summary>Command palette, step 2 (any thread): insert this snippet into the field captured in step 1.</summary>
+    public void InsertFromPalette(string snippetId, ActiveTarget target)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(snippetId);
+        ArgumentNullException.ThrowIfNull(target);
+        _inbox.Writer.TryWrite(new PaletteChosen(snippetId, target));
+    }
+
+    /// <summary>
+    /// Same checks as a typed trigger, minus the abbreviation to delete: the original field must come back and pass
+    /// the policy (never into a password field), or nothing is inserted. An explicit choice works while paused.
+    /// </summary>
+    private async Task InsertFromPaletteAsync(PaletteChosen chosen)
+    {
+        if (_index?.FindById(chosen.SnippetId) is not { } snippet)
+        {
+            return; // the library changed while the palette was open
+        }
+
+        CancelMenu(reason: null);
+        DisposePendingTimer();
+        var target = await ReturnToAsync(chosen.Target).ConfigureAwait(false);
+        if (target is null)
+        {
+            Record(new TargetRejected(Now, chosen.Target.ProcessName, RejectionReason.WindowChanged));
+            return;
+        }
+
+        if (!Volatile.Read(ref _policy).Evaluate(target, TextFlowFeature.Expansion).IsAllowed)
+        {
+            Record(new TargetRejected(Now, target.ProcessName, RejectionReason.PolicyDenied));
+            return;
+        }
+
+        await ExpandContentAsync(target, snippet, backspaces: 0, trailing: string.Empty, fromMenu: false).ConfigureAwait(false);
+    }
+
     /// <summary>Completes once every event queued before the call (and the work it caused) has been handled.</summary>
     public Task IdleAsync()
     {
@@ -247,6 +299,7 @@ public sealed partial class ExpansionEngine
         MenuDelayElapsed elapsed when _open is { Shown: false } && _open.Session == elapsed.Session => RevealMenu(),
         FieldsFinished fields => FinishFieldsAsync(fields),
         WaitElapsed elapsed => GiveUpWaitingAsync(elapsed),
+        PaletteChosen chosen => InsertFromPaletteAsync(chosen),
         PendingElapsed elapsed => _hook.FlushPendingAsync(elapsed.Version),
         PauseChanged change => ApplyPauseAsync(change.Paused),
         _ => Task.CompletedTask, // stale menu result, or menu input with no menu
@@ -636,6 +689,8 @@ public sealed partial class ExpansionEngine
     private sealed record PendingElapsed(int Version) : EngineWork;
 
     private sealed record MenuDelayElapsed(int Session) : EngineWork;
+
+    private sealed record PaletteChosen(string SnippetId, ActiveTarget Target) : EngineWork;
 
     private sealed record PauseChanged(bool Paused) : EngineWork;
 

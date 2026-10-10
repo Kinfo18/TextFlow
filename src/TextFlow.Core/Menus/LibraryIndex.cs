@@ -24,13 +24,17 @@ public sealed class LibraryIndex
 
     private readonly Dictionary<string, GroupMenu> _menus;
     private readonly Dictionary<string, MenuSnippetEntry> _snippets;
+    private readonly Dictionary<string, MenuSnippetEntry> _byId;
 
-    private LibraryIndex(IReadOnlyList<GroupMenu> menus, Dictionary<string, MenuSnippetEntry> snippets, IReadOnlyList<TriggerDefinition> triggers)
+    private LibraryIndex(
+        IReadOnlyList<GroupMenu> menus, Dictionary<string, MenuSnippetEntry> snippets, IReadOnlyList<TriggerDefinition> triggers,
+        Dictionary<string, MenuSnippetEntry> byId)
     {
         Menus = menus;
         _menus = menus.ToDictionary(m => m.Id, StringComparer.Ordinal);
         _snippets = snippets;
         Triggers = triggers;
+        _byId = byId;
     }
 
     public IReadOnlyList<GroupMenu> Menus { get; }
@@ -65,7 +69,12 @@ public sealed class LibraryIndex
             }
         }
 
-        return new LibraryIndex(menus, snippets, triggers);
+        var byId = groups.SelectMany(g => g.Snippets)
+            .Where(s => !s.IsInfoOnly && s.Enabled)
+            .GroupBy(s => s.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => { var s = g.First(); return new MenuSnippetEntry(s.Name, s.Content, s.SendEnter, s.Id); }, StringComparer.Ordinal);
+
+        return new LibraryIndex(menus, snippets, triggers, byId);
     }
 
     /// <summary>Fits the matcher buffer; an after-delimiter abbreviation cannot itself contain a delimiter ("Foto valida").</summary>
@@ -76,6 +85,9 @@ public sealed class LibraryIndex
     public GroupMenu? FindMenu(string triggerId) => _menus.GetValueOrDefault(triggerId);
 
     public MenuSnippetEntry? FindSnippet(string triggerId) => _snippets.GetValueOrDefault(triggerId);
+
+    /// <summary>Any enabled, insertable snippet by its library id, with or without a typeable abbreviation (palette, D11).</summary>
+    public MenuSnippetEntry? FindById(string snippetId) => _byId.GetValueOrDefault(snippetId);
 
     private static GroupMenu[] BuildMenus(IEnumerable<LibraryGroup> abbreviated)
     {

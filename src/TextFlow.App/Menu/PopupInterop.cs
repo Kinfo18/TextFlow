@@ -31,6 +31,57 @@ internal static unsafe partial class PopupInterop
     public static void BringToTopmost(nint hwnd) =>
         SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate | SwpNoOwnerZOrder);
 
+    /// <summary>
+    /// Brings a window that must take the keyboard (the command palette) to the front from a background app. Windows'
+    /// foreground lock refuses a plain SetForegroundWindow then; sharing input with the current foreground thread for a
+    /// moment is the documented way through (same as Win32TargetResolver.Activate).
+    /// </summary>
+    public static void ForceForeground(nint hwnd)
+    {
+        if (SetForegroundWindow(hwnd))
+        {
+            return;
+        }
+
+        var foreground = GetForegroundWindow();
+        var foregroundThread = foreground == 0 ? 0u : GetWindowThreadProcessId(foreground, 0);
+        var ownThread = GetCurrentThreadId();
+        var attached = foregroundThread != 0 && foregroundThread != ownThread && AttachThreadInput(ownThread, foregroundThread, true);
+        try
+        {
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(ownThread, foregroundThread, false);
+            }
+        }
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindow(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    private static partial nint GetForegroundWindow();
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(nint hwnd, nint processId);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetCurrentThreadId();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AttachThreadInput(uint attach, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool doAttach);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool BringWindowToTop(nint hwnd);
+
     private static readonly nint HwndTopmost = -1;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoMove = 0x0002;

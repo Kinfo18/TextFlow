@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using TextFlow.App.Engine;
 using TextFlow.App.Fields;
 using TextFlow.App.Menu;
+using TextFlow.App.Palette;
 using TextFlow.App.Updates;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Input;
@@ -37,6 +38,9 @@ public partial class App : Application, IDisposable
     private AppSettings _settings = new();
     private StartupRegistration? _startup;
     private GlobalHotkey? _pauseHotkey;
+    private GlobalHotkey? _paletteHotkey;
+    private PaletteWindow? _paletteWindow;
+    private PaletteHost? _palette;
     private AppUpdater? _updater;
     private MainWindow? _window;
     private bool _exiting;
@@ -64,6 +68,9 @@ public partial class App : Application, IDisposable
     public static new App Current => (App)Application.Current;
 
     public IServiceProvider Services => _host.Services;
+
+    /// <summary>Opens a section of the main window, if it is open ("diagnostics" from Inicio).</summary>
+    internal void ShowSection(string tag) => _window?.ShowSection(tag);
 
     internal EngineHost? Engine => _engine;
 
@@ -106,6 +113,7 @@ public partial class App : Application, IDisposable
         _window?.ApplyTheme(theme);
         _popup?.ApplyTheme(theme);
         _fieldsWindow?.ApplyTheme(theme);
+        _paletteWindow?.ApplyTheme(theme);
     }
 
     internal void SetSound(bool enabled, double volume)
@@ -260,6 +268,7 @@ public partial class App : Application, IDisposable
         _startup = new StartupRegistration(InstanceName, Environment.ProcessPath!);
 
         StartPauseHotkey(ui, tray);
+        StartPalette();
 
         var updater = new AppUpdater(RecordFault);
         updater.UpdateReady += () => ui.TryEnqueue(() =>
@@ -272,6 +281,78 @@ public partial class App : Application, IDisposable
 
         // After the updater: only the installed copy may point the Run entry at itself on startup.
         ApplyStartWithWindows(_settings.StartWithWindows, takeOverOtherCopy: updater.IsInstalled);
+    }
+
+    /// <summary>Palette shortcut as shown to the user, and whether Windows let TextFlow have it.</summary>
+    internal (string Gesture, bool Registered)? PaletteHotkey =>
+        _paletteHotkey is null ? null : (_paletteHotkey.Gesture.ToString(), _paletteHotkey.IsRegistered);
+
+    /// <summary>Replaces the palette shortcut; false (and the previous one kept) if Windows did not give it to TextFlow.</summary>
+    internal bool SetPaletteHotkey(HotkeyGesture gesture)
+    {
+        var previous = _paletteHotkey?.Gesture ?? HotkeyGesture.DefaultPalette;
+        if (TryUsePaletteHotkey(gesture))
+        {
+            _settings = _settings with { PaletteHotkey = gesture.ToString() };
+            SaveSettings();
+            return true;
+        }
+
+        TryUsePaletteHotkey(previous);
+        return false;
+    }
+
+    private bool TryUsePaletteHotkey(HotkeyGesture gesture)
+    {
+        _paletteHotkey?.Dispose();
+        _paletteHotkey = null;
+        try
+        {
+            _paletteHotkey = new GlobalHotkey(gesture);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            RecordFault(ex);
+            return false;
+        }
+
+        var ui = _ui!;
+        _paletteHotkey.Pressed += () => ui.TryEnqueue(() =>
+        {
+            if (!_exiting)
+            {
+                _palette?.Open();
+            }
+        });
+        return _paletteHotkey.IsRegistered;
+    }
+
+    /// <summary>Command palette (D11). Optional like the pause shortcut: without it TextFlow works as before.</summary>
+    private void StartPalette()
+    {
+        _paletteWindow = new PaletteWindow();
+        _paletteWindow.ApplyTheme(_settings.Theme);
+        _palette = new PaletteHost(_paletteWindow, _engine!, _library!, PaletteActions);
+        var gesture = HotkeyGesture.TryParse(_settings.PaletteHotkey, out var configured) ? configured! : HotkeyGesture.DefaultPalette;
+        TryUsePaletteHotkey(gesture);
+    }
+
+    /// <summary>TextFlow's own commands in the palette (spec section 22); built on every query so they show the current state.</summary>
+    private IReadOnlyList<PaletteItem> PaletteActions() =>
+    [
+        _engine?.IsPaused == true
+            ? new PaletteItem("Reanudar expansiones", "Acción de TextFlow", Run: () => _engine?.TogglePause())
+            : new PaletteItem("Pausar expansiones", "Acción de TextFlow", Run: () => _engine?.TogglePause()),
+        new PaletteItem("Abrir TextFlow", "Acción de TextFlow", Run: () => ShowWindow()),
+        new PaletteItem("Crear o editar snippets", "Abre la sección Snippets", Run: () => OpenSection("snippets")),
+        new PaletteItem("Diagnóstico de hoy", "Abre la sección Diagnóstico", Run: () => OpenSection("diagnostics")),
+        new PaletteItem("Configuración", "Abre la sección Configuración", Run: () => OpenSection("settings")),
+    ];
+
+    private void OpenSection(string tag)
+    {
+        ShowWindow();
+        ShowSection(tag);
     }
 
     /// <summary>Optional: if it cannot be created TextFlow keeps running and pauses from the tray.</summary>
@@ -500,6 +581,7 @@ public partial class App : Application, IDisposable
         {
             _updater?.Dispose();
             _pauseHotkey?.Dispose();
+            _paletteHotkey?.Dispose();
             _tray?.Dispose();
             if (_engine is not null)
             {
@@ -542,6 +624,7 @@ public partial class App : Application, IDisposable
     public void Dispose()
     {
         _pauseHotkey?.Dispose();
+        _paletteHotkey?.Dispose();
         _tray?.Dispose();
         _engine?.DisposeAsync().AsTask().GetAwaiter().GetResult(); // no-op after ExitAsync
         _library?.DisposeAsync().AsTask().GetAwaiter().GetResult();

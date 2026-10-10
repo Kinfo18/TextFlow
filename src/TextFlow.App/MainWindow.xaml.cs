@@ -80,6 +80,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>Opens a section from inside a page ("diagnostics" from Inicio's numbers).</summary>
+    public void ShowSection(string tag) =>
+        Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => Equals(item.Tag, tag));
+
     /// <summary>Re-reads the engine state (pause, library) into the visible page.</summary>
     public void Refresh() => (ContentHost.Content as IRefreshable)?.Refresh();
 

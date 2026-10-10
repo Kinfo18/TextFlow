@@ -15,6 +15,7 @@ namespace TextFlow.App;
 /// <param name="StartWithWindows">Kept in sync with the HKCU Run entry at every start (H1.3).</param>
 /// <param name="PauseHotkey">Global pause/resume shortcut, e.g. "Ctrl+Shift+Alt+P" (H1.4); null or invalid uses the default.</param>
 /// <param name="Theme">Window theme (H3.1).</param>
+/// <param name="PaletteHotkey">Command palette shortcut (D11), e.g. "Ctrl+Shift+Alt+Space"; null or invalid uses the default.</param>
 public sealed record AppSettings(
     string? ATextBackupPath = null,
     double ChimeVolume = 1.0,
@@ -23,7 +24,8 @@ public sealed record AppSettings(
     AppTheme Theme = AppTheme.System,
     bool SoundEnabled = true,
     int PrefixTimeoutMs = 600,
-    IReadOnlyList<string>? ExcludedProcesses = null)
+    IReadOnlyList<string>? ExcludedProcesses = null,
+    string? PaletteHotkey = null)
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 

@@ -60,4 +60,15 @@ public sealed class HotkeyGestureTests
         Assert.True(HotkeyGesture.TryParse(text, out var gesture));
         Assert.Equal(expected, gesture!.OverlapsAltGr);
     }
+
+    [Theory]
+    [InlineData("Ctrl+Shift+Alt+Space")]
+    [InlineData("ctrl+alt+mayus+espacio")]
+    public void Space_ParsesAndRoundTrips(string text)
+    {
+        Assert.True(HotkeyGesture.TryParse(text, out var gesture));
+        Assert.Equal(HotkeyGesture.DefaultPalette, gesture);
+        Assert.Equal("Ctrl+Shift+Alt+Space", gesture!.ToString());
+        Assert.False(gesture.OverlapsAltGr);
+    }
 }

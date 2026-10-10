@@ -1,3 +1,4 @@
+using TextFlow.Contracts.Targeting;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Engine;
 using TextFlow.Core.Expansion;
@@ -112,6 +113,12 @@ public sealed class EngineHost : IAsyncDisposable
 
     /// <summary>Wakes a sleeping audio device (inaudible) before the user presses "Probar".</summary>
     public void WarmSound() => _sound.Warm();
+
+    /// <summary>Command palette (D11): the field to come back to, captured before the palette takes the focus.</summary>
+    public Task<ActiveTarget?> CapturePaletteTargetAsync() => _engine.CapturePaletteTargetAsync();
+
+    /// <summary>Command palette: insert this snippet into the captured field.</summary>
+    public void InsertFromPalette(string snippetId, ActiveTarget target) => _engine.InsertFromPalette(snippetId, target);
 
     public void TogglePause()
     {

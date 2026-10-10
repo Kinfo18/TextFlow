@@ -17,15 +17,22 @@ public enum HotkeyModifiers : uint
 /// A global shortcut such as "Ctrl+Shift+Alt+P", stored as text in settings. Requires Ctrl, Alt or Win:
 /// a bare key or Shift+key would swallow normal typing in every app.
 /// </summary>
-/// <param name="VirtualKey">Windows virtual-key code (A-Z, 0-9, F1-F24, Pause).</param>
+/// <param name="VirtualKey">Windows virtual-key code (A-Z, 0-9, F1-F24, Pause, Space).</param>
 public sealed record HotkeyGesture(HotkeyModifiers Modifiers, uint VirtualKey)
 {
     private const uint PauseKey = 0x13;
+    private const uint SpaceKey = 0x20;
     private const uint F1 = 0x70;
     private const int MaxFunctionKey = 24;
 
     /// <summary>Default pause/resume shortcut (H1.4). Not Ctrl+Alt+letter: that is AltGr on Spanish keyboards.</summary>
     public static HotkeyGesture DefaultPause { get; } = new(HotkeyModifiers.Control | HotkeyModifiers.Shift | HotkeyModifiers.Alt, 'P');
+
+    /// <summary>
+    /// Default command palette shortcut (D11). Not the spec's Ctrl+Alt+Space: the Claude desktop app already takes it
+    /// (2026-10-09), and RegisterHotKey cannot share. Same modifiers as the pause shortcut.
+    /// </summary>
+    public static HotkeyGesture DefaultPalette { get; } = new(HotkeyModifiers.Control | HotkeyModifiers.Shift | HotkeyModifiers.Alt, SpaceKey);
 
     /// <summary>
     /// Ctrl+Alt (no Shift or Win) plus a letter or digit is what AltGr sends: registering it would stop the user typing
@@ -118,6 +125,11 @@ public sealed record HotkeyGesture(HotkeyModifiers Modifiers, uint VirtualKey)
             return PauseKey;
         }
 
+        if (upper is "SPACE" or "ESPACIO")
+        {
+            return SpaceKey;
+        }
+
         if (upper.Length > 1 && upper[0] == 'F'
             && int.TryParse(upper.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var number)
             && number is >= 1 and <= MaxFunctionKey)
@@ -131,6 +143,7 @@ public sealed record HotkeyGesture(HotkeyModifiers Modifiers, uint VirtualKey)
     private static string KeyName(uint key) => key switch
     {
         PauseKey => "Pause",
+        SpaceKey => "Space",
         >= F1 and < F1 + MaxFunctionKey => $"F{key - F1 + 1}",
         _ => ((char)key).ToString(),
     };
