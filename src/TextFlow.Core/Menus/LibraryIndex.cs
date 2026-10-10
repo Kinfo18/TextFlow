@@ -59,7 +59,7 @@ public sealed class LibraryIndex
                         continue;
                     }
 
-                    snippets[candidate.SnippetId] = new MenuSnippetEntry(snippet.Name, snippet.Content, snippet.SendEnter);
+                    snippets[candidate.SnippetId] = new MenuSnippetEntry(snippet.Name, snippet.Content, snippet.SendEnter, snippet.Id);
                     triggers.Add(candidate);
                 }
             }
@@ -112,7 +112,7 @@ public sealed class LibraryIndex
     private static MenuEntry[] Children(LibraryGroup group) =>
     [
         .. group.Groups.Select(g => new MenuGroupEntry(g.Name, Children(g))),
-        .. group.Snippets.Select(s => new MenuSnippetEntry(s.Name, s.Content, s.SendEnter)),
+        .. group.Snippets.Select(s => new MenuSnippetEntry(s.Name, s.Content, s.SendEnter, s.Id)),
     ];
 
     private static IEnumerable<LibraryGroup> Flatten(LibraryGroup group) => group.Groups.SelectMany(Flatten).Prepend(group);

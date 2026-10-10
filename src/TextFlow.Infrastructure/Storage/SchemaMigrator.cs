@@ -64,6 +64,15 @@ public static class SchemaMigrator
         """
         ALTER TABLE snippet ADD COLUMN send_enter INTEGER NOT NULL DEFAULT 0 CHECK (send_enter IN (0, 1));
         """,
+
+        // 3 — use counts per snippet (D12, 2026-10-09). No foreign key: replacing the library keeps them.
+        """
+        CREATE TABLE snippet_usage (
+            snippet_id   TEXT PRIMARY KEY CHECK (snippet_id <> ''),
+            use_count    INTEGER NOT NULL CHECK (use_count >= 0),
+            last_used_at TEXT NOT NULL
+        );
+        """,
     ];
 
     public static int LatestVersion => Migrations.Length;

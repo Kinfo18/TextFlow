@@ -67,6 +67,15 @@ public interface IPointerLocator
     PixelRect CursorAnchor();
 }
 
+/// <summary>
+/// Counts uses per snippet (D12): the snippet id only, never what it inserted. Called on the engine loop, so it must
+/// return at once (buffer and write elsewhere).
+/// </summary>
+public interface IUsageRecorder
+{
+    void Record(string snippetId);
+}
+
 /// <param name="PendingTimeout">How long an ambiguous snippet trigger ("dir1" while "dir12" exists) waits (spec revisions 2026-10-02).</param>
 /// <param name="CaptureTimeout">Longest wait for the target (UIA can hang); after it the target counts as missing.</param>
 /// <param name="FocusReturnTimeout">After a fields prompt, how long to wait for the original field to get the focus back.</param>

@@ -27,6 +27,7 @@ public sealed partial class ExpansionEngine
     private readonly IExpansionFeedback _feedback;
     private readonly IFieldPrompt? _fieldPrompt;
     private readonly IVariableSource _variables;
+    private readonly IUsageRecorder? _usage;
     private readonly IPointerLocator _pointer;
     private readonly IDiagnosticSink _sink;
     private readonly TimeProvider _time;
@@ -55,7 +56,8 @@ public sealed partial class ExpansionEngine
         TimeProvider time,
         ExpansionEngineOptions options,
         IFieldPrompt? fieldPrompt = null,
-        IVariableSource? variables = null)
+        IVariableSource? variables = null,
+        IUsageRecorder? usage = null)
     {
         _hook = hook;
         _resolver = resolver;
@@ -69,6 +71,7 @@ public sealed partial class ExpansionEngine
         _options = options;
         _fieldPrompt = fieldPrompt;
         _variables = variables ?? new ClockVariables(time);
+        _usage = usage;
     }
 
     public bool IsPaused => _paused;

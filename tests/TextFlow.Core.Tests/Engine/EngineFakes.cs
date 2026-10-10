@@ -298,3 +298,10 @@ internal sealed class FakeVariables(TimeProvider time) : IVariableSource
 
     public string? GetSelectionText() => null;
 }
+
+internal sealed class FakeUsage : IUsageRecorder
+{
+    public List<string> Recorded { get; } = [];
+
+    public void Record(string snippetId) => Recorded.Add(snippetId);
+}

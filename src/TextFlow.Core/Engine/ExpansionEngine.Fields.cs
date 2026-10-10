@@ -30,20 +30,39 @@ public sealed partial class ExpansionEngine
         var content = snippet.Content;
         if (!content.Contains("{{", StringComparison.Ordinal))
         {
-            return await ExpandAsync(target, content + trailing, backspaces, fromMenu, sendEnter: snippet.SendEnter)
-                .ConfigureAwait(false); // fast path
+            return CountUse(snippet, await ExpandAsync(target, content + trailing, backspaces, fromMenu, sendEnter: snippet.SendEnter)
+                .ConfigureAwait(false)); // fast path
         }
 
         var template = TemplateParser.Parse(content);
         if (template.RequiresInput && _fieldPrompt is not null)
         {
+            CountUse(snippet); // its form opened: the user reached for this snippet, whatever happens to the fields
             await AskFieldsAsync(target, template, backspaces, trailing, fromMenu, snippet.SendEnter).ConfigureAwait(false);
             return null;
         }
 
         var rendered = Render(template, NoValues);
-        return await ExpandAsync(target, rendered.Text + trailing, backspaces, fromMenu, CaretOffset(rendered, trailing), snippet.SendEnter)
-            .ConfigureAwait(false);
+        return CountUse(snippet, await ExpandAsync(target, rendered.Text + trailing, backspaces, fromMenu, CaretOffset(rendered, trailing), snippet.SendEnter)
+            .ConfigureAwait(false));
+    }
+
+    private InsertionResult CountUse(MenuSnippetEntry snippet, InsertionResult result)
+    {
+        if (result.Succeeded)
+        {
+            CountUse(snippet);
+        }
+
+        return result;
+    }
+
+    private void CountUse(MenuSnippetEntry snippet)
+    {
+        if (snippet.Id is { } id)
+        {
+            _usage?.Record(id);
+        }
     }
 
     private async Task AskFieldsAsync(

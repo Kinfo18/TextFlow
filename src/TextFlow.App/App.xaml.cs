@@ -239,7 +239,7 @@ public partial class App : Application, IDisposable
         _library = new LibraryHost(paths, sink);
         var library = await _library.InitializeAsync(_settings.ATextBackupPath, CancellationToken.None);
 
-        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), new WinUiFieldPrompt(ui, _fieldsWindow), sink);
+        _engine = new EngineHost(_settings, new WinUiMenuPresenter(ui, popup), new WinUiFieldPrompt(ui, _fieldsWindow), sink, _library.Usage);
         await _engine.StartAsync(library);
 
         // Every import or edit re-indexes the engine at once (H2.2), and the window shows the new counts.

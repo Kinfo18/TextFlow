@@ -22,10 +22,15 @@ public sealed class LibraryHost : IAsyncDisposable
     /// <summary>aText writes the backup in several steps: wait for it to settle before reading.</summary>
     private static readonly TimeSpan ReimportDelay = TimeSpan.FromSeconds(1);
 
+    /// <summary>Use counts reach the disk in batches, never on the engine's path (D12).</summary>
+    private static readonly TimeSpan UsageFlushInterval = TimeSpan.FromMinutes(1);
+
     private readonly IDiagnosticSink _sink;
     private readonly SqliteDatabase _db;
     private readonly LibraryBackups _backups;
     private readonly Timer _reimportTimer;
+    private readonly SqliteUsageRepository _usage;
+    private readonly Timer _usageTimer;
     private FileSystemWatcher? _watcher;
     private int _lastImportIssues;
     private bool _disposed;
@@ -38,6 +43,8 @@ public sealed class LibraryHost : IAsyncDisposable
         Service = new LibraryService(new SqliteLibraryRepository(_db, TimeProvider.System));
         Service.Changed += root => Publish(root, error: null);
         _reimportTimer = new Timer(_ => _ = ReimportFromWatcherAsync(), null, Timeout.Infinite, Timeout.Infinite);
+        _usage = new SqliteUsageRepository(_db);
+        _usageTimer = new Timer(_ => _ = FlushUsageAsync(), null, Timeout.Infinite, Timeout.Infinite);
         Status = new LibraryStatus(null, null, null);
     }
 
@@ -48,10 +55,18 @@ public sealed class LibraryHost : IAsyncDisposable
 
     public LibraryStatus Status { get; private set; }
 
+    /// <summary>Snippet uses not written yet; the engine records into it (ids and counts only).</summary>
+    public UsageTracker Usage { get; } = new(TimeProvider.System);
+
+    /// <summary>Stored use counts plus the ones still in memory.</summary>
+    public async Task<IReadOnlyDictionary<string, SnippetUsage>> LoadUsageAsync(CancellationToken ct) =>
+        Usage.Merge(await _usage.LoadAsync(ct).ConfigureAwait(false));
+
     /// <summary>Opens (and migrates) the database; on first start imports the configured aText backup.</summary>
     public async Task<LibraryGroup> InitializeAsync(string? aTextPath, CancellationToken ct)
     {
         await _db.InitializeAsync(ct).ConfigureAwait(false);
+        _usageTimer.Change(UsageFlushInterval, UsageFlushInterval);
         var root = await Service.LoadAsync(ct).ConfigureAwait(false);
         Status = Status with { SourcePath = NullIfBlank(aTextPath) };
 
@@ -238,6 +253,26 @@ public sealed class LibraryHost : IAsyncDisposable
         return watcher;
     }
 
+    /// <summary>A failed write keeps the batch in memory for the next attempt; the engine never notices.</summary>
+    private async Task FlushUsageAsync()
+    {
+        var batch = Usage.TakePending();
+        if (batch.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await _usage.AddAsync(batch, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException or InvalidOperationException)
+        {
+            Usage.Restore(batch);
+            _sink.Record(new EngineFault(DateTimeOffset.UtcNow, ex.GetType().Name));
+        }
+    }
+
     private static string? NullIfBlank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text;
 
     public async ValueTask DisposeAsync()
@@ -250,6 +285,8 @@ public sealed class LibraryHost : IAsyncDisposable
         _disposed = true;
         _watcher?.Dispose();
         await _reimportTimer.DisposeAsync().ConfigureAwait(false);
+        await _usageTimer.DisposeAsync().ConfigureAwait(false);
+        await FlushUsageAsync().ConfigureAwait(false); // the last minute of uses
         Service.Dispose();
     }
 }

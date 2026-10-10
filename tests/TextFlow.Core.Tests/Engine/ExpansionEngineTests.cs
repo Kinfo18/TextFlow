@@ -24,6 +24,7 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
     private readonly FakeTimeProvider _time = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly FakeVariables _variables;
+    private readonly FakeUsage _usage = new();
     private ExpansionEngine _engine;
     private readonly LibraryIndex _index;
     private Task? _run;
@@ -58,7 +59,7 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
 
     private ExpansionEngine CreateEngine(TimeSpan menuDelay) => new(
         _hook, _resolver, new SecurityPolicy(BuiltinExclusions.All), _insertion, _menu, _feedback, new FakePointer(),
-        _sink, _time, ExpansionEngineOptions.Default with { MenuDelay = menuDelay }, _fields, _variables);
+        _sink, _time, ExpansionEngineOptions.Default with { MenuDelay = menuDelay }, _fields, _variables, _usage);
 
     private static LibrarySnippet Snippet(string id, string abbreviation, string content) =>
         new(id, abbreviation, content, IsRichText: false, [abbreviation]);
