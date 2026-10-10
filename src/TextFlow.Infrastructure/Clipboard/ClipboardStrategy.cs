@@ -11,9 +11,11 @@ namespace TextFlow.Infrastructure.Clipboard;
 
 /// <param name="PasteSettleDelay">Time the target gets to read the clipboard before it is restored.
 /// Electron/Chromium apps read asynchronously; restoring too early pastes the old content.</param>
-public sealed record ClipboardStrategyOptions(TimeSpan PasteSettleDelay)
+/// <param name="EnterDelay">Gap between Ctrl+V and the Enter that sends a chat message. Short on purpose: the target
+/// handles its input in order, so Enter lands after the paste; the clipboard is still restored after the full settle.</param>
+public sealed record ClipboardStrategyOptions(TimeSpan PasteSettleDelay, TimeSpan EnterDelay)
 {
-    public static ClipboardStrategyOptions Default { get; } = new(TimeSpan.FromMilliseconds(250));
+    public static ClipboardStrategyOptions Default { get; } = new(TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(40));
 }
 
 /// <summary>
@@ -112,12 +114,18 @@ public sealed class ClipboardStrategy : IInsertionStrategy, IDisposable
             }
 
             // Not cancellable: once Ctrl+V was sent we must still try to restore the user's clipboard.
-            await Task.Delay(_options.PasteSettleDelay, CancellationToken.None).ConfigureAwait(false);
-            KeyboardInput.Tap(VIRTUAL_KEY.VK_LEFT, request.CaretOffsetFromEnd);
+            var settle = _options.PasteSettleDelay;
             if (pasted && request.PressEnterAfter)
             {
-                KeyboardInput.Tap(VIRTUAL_KEY.VK_RETURN); // after the settle delay: the paste has landed
+                // Not after the whole settle (2026-10-10: the user noticed the pause before the message went out).
+                var enterDelay = settle < _options.EnterDelay ? settle : _options.EnterDelay;
+                await Task.Delay(enterDelay, CancellationToken.None).ConfigureAwait(false);
+                KeyboardInput.Tap(VIRTUAL_KEY.VK_RETURN);
+                settle -= enterDelay;
             }
+
+            await Task.Delay(settle, CancellationToken.None).ConfigureAwait(false);
+            KeyboardInput.Tap(VIRTUAL_KEY.VK_LEFT, request.CaretOffsetFromEnd);
 
             if (ClipboardStore.SequenceNumber != ourSequence)
             {
