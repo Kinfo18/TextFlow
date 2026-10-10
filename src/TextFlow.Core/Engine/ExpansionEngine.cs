@@ -125,7 +125,7 @@ public sealed partial class ExpansionEngine
     /// </summary>
     public async Task<ActiveTarget?> CapturePaletteTargetAsync()
     {
-        var target = await CaptureTargetAsync().ConfigureAwait(false);
+        var target = await CaptureTargetAsync(locateCaret: true).ConfigureAwait(false); // a template opens its fields there
         if (target is not null)
         {
             _resolver.BookmarkField(target);
@@ -155,7 +155,7 @@ public sealed partial class ExpansionEngine
 
         CancelMenu(reason: null);
         DisposePendingTimer();
-        var target = await ReturnToAsync(chosen.Target).ConfigureAwait(false);
+        var (target, _) = await ReturnToAsync(chosen.Target).ConfigureAwait(false);
         if (target is null)
         {
             Record(new TargetRejected(Now, chosen.Target.ProcessName, RejectionReason.WindowChanged));
@@ -291,6 +291,7 @@ public sealed partial class ExpansionEngine
         MenuKeyPressed key when _open is not null => SendToMenu(key.Input),
         MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
         ForegroundChanged or FocusChanged when _waiting is not null => FocusMovedWhileWaitingAsync((HookEvent)work),
+        PointerReleased when _waiting is not null => DeliverIfBackAsync(),
         ForegroundChanged => HandleForegroundChangedAsync(),
         FocusChanged { KnownField: true } when _open is null => RecheckKnownFieldAsync(),
         FocusChanged when _open is null => RefreshCaptureUnlessSupersededAsync(),
@@ -331,7 +332,9 @@ public sealed partial class ExpansionEngine
         DisposePendingTimer();
 
         var index = _index;
-        var target = await CaptureTargetAsync().ConfigureAwait(false);
+        // Plain text needs no caret (only menus and field prompts are placed there): skip that lookup, expand sooner.
+        var plainText = index?.FindSnippet(match.SnippetId) is { } found && !found.Content.Contains("{{", StringComparison.Ordinal);
+        var target = await CaptureTargetAsync(locateCaret: !plainText).ConfigureAwait(false);
         if (Reject(target, foregroundWindow) is { } reason)
         {
             Record(new TargetRejected(Now, target?.ProcessName ?? string.Empty, reason));
@@ -593,11 +596,12 @@ public sealed partial class ExpansionEngine
     }
 
     /// <summary>Null when nothing is focused or UIA did not answer in time (the call keeps running in the background).</summary>
-    private async Task<ActiveTarget?> CaptureTargetAsync()
+    /// <param name="locateCaret">Only menus and field prompts need the caret; the UI Automation lookup costs time.</param>
+    private async Task<ActiveTarget?> CaptureTargetAsync(bool locateCaret = false)
     {
         try
         {
-            return await Task.Run(_resolver.CaptureTarget, _stopping)
+            return await Task.Run(() => _resolver.CaptureTarget(locateCaret), _stopping)
                 .WaitAsync(_options.CaptureTimeout, _time, _stopping)
                 .ConfigureAwait(false);
         }

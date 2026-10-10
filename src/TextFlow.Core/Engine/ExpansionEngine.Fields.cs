@@ -128,7 +128,7 @@ public sealed partial class ExpansionEngine
             return;
         }
 
-        var target = await ReturnToAsync(open.Target).ConfigureAwait(false);
+        var (target, restored) = await ReturnToAsync(open.Target).ConfigureAwait(false);
         if (target is null)
         {
             // Still on the page the values came from (another tab cannot be switched to from here): wait for the user.
@@ -136,6 +136,7 @@ public sealed partial class ExpansionEngine
                 _ => _inbox.Writer.TryWrite(new WaitElapsed(open.Session)), null, _options.ReturnWaitTimeout, Timeout.InfiniteTimeSpan);
             _waiting = new Waiting(open.Target, text, caretOffset, open.FromMenu, open.SendEnter, open.Session, timer);
             _fieldPrompt!.ShowWaiting();
+            Record(new FieldsWaiting(Now, FocusRestored: restored));
             return;
         }
 
@@ -163,16 +164,7 @@ public sealed partial class ExpansionEngine
     /// <summary>While filled-in fields wait, every focus move checks whether the user is back in the original field.</summary>
     private async Task FocusMovedWhileWaitingAsync(HookEvent moved)
     {
-        if (_waiting is { } waiting && !_paused)
-        {
-            var current = await CaptureTargetAsync().ConfigureAwait(false);
-            if (_waiting == waiting && IsSameField(waiting.Target, current))
-            {
-                StopWaiting();
-                _fieldPrompt!.Cancel(); // the "go back" message has done its job
-                await DeliverAsync(current!, waiting.Text, waiting.CaretOffset, waiting.FromMenu, waiting.SendEnter).ConfigureAwait(false);
-            }
-        }
+        await DeliverIfBackAsync().ConfigureAwait(false);
 
         if (moved is ForegroundChanged)
         {
@@ -181,6 +173,26 @@ public sealed partial class ExpansionEngine
         else if (_open is null)
         {
             await RefreshCaptureUnlessSupersededAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Inserts the waiting text if the user is back in the original field. Runs on focus moves and on clicks: a click
+    /// into a field that already has the focus (TextFlow put it back there) raises no focus event.
+    /// </summary>
+    private async Task DeliverIfBackAsync()
+    {
+        if (_waiting is not { } waiting || _paused)
+        {
+            return;
+        }
+
+        var current = await CaptureTargetAsync().ConfigureAwait(false);
+        if (_waiting == waiting && IsSameField(waiting.Target, current))
+        {
+            StopWaiting();
+            _fieldPrompt!.Cancel(); // the "go back" message has done its job
+            await DeliverAsync(current!, waiting.Text, waiting.CaretOffset, waiting.FromMenu, waiting.SendEnter).ConfigureAwait(false);
         }
     }
 
@@ -202,34 +214,45 @@ public sealed partial class ExpansionEngine
     }
 
     /// <summary>Brings the original window back and waits until its original field has the focus again.</summary>
-    private async Task<ActiveTarget?> ReturnToAsync(ActiveTarget original)
+    /// <returns>The target once it is back (null if not), and whether TextFlow had put the focus back itself.</returns>
+    private async Task<(ActiveTarget? Target, bool Restored)> ReturnToAsync(ActiveTarget original)
     {
         if (!_resolver.Activate(original))
         {
-            return null;
+            return (null, false);
         }
 
-        var deadline = TimeProvider.System.GetTimestamp();
+        var started = TimeProvider.System.GetTimestamp();
+        var timeout = _options.FocusReturnTimeout;
+        var tried = false;
         var restored = false;
         while (true)
         {
             var current = await CaptureTargetAsync().ConfigureAwait(false);
             if (IsSameField(original, current))
             {
-                return current;
+                return (current, restored);
             }
 
-            if (!restored && IsSameWindowOtherField(original, current))
+            if (!tried && IsSameWindowOtherField(original, current))
             {
                 // The value was copied from the same page (2026-10-08): put the focus back instead of waiting for a click.
-                restored = true;
-                await Task.Run(() => _resolver.RestoreField(original), _stopping).ConfigureAwait(false);
+                tried = true;
+                restored = await Task.Run(() => _resolver.RestoreField(original), _stopping).ConfigureAwait(false);
+                if (restored)
+                {
+                    // A fresh wait: the browser reports the restored focus on its own schedule, and the first 400 ms
+                    // are often gone by now (2026-10-10: the text waited for a click on a field that had the focus).
+                    started = TimeProvider.System.GetTimestamp();
+                    timeout = RestoredFocusTimeout;
+                }
+
                 continue;
             }
 
-            if (TimeProvider.System.GetElapsedTime(deadline) >= _options.FocusReturnTimeout)
+            if (TimeProvider.System.GetElapsedTime(started) >= timeout)
             {
-                return null;
+                return (null, restored);
             }
 
             // Real time on purpose: Windows moves the focus back on its own schedule, not the engine's clock.
@@ -238,6 +261,8 @@ public sealed partial class ExpansionEngine
     }
 
     private static readonly TimeSpan FocusReturnPoll = TimeSpan.FromMilliseconds(40);
+
+    private static readonly TimeSpan RestoredFocusTimeout = TimeSpan.FromSeconds(1);
 
     private static readonly TimeSpan BookmarkSettle = TimeSpan.FromMilliseconds(60);
 

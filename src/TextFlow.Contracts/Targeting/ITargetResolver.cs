@@ -5,6 +5,12 @@ public interface ITargetResolver
     /// <summary>Captures the current foreground window and focused control. Null when nothing usable is focused.</summary>
     ActiveTarget? CaptureTarget();
 
+    /// <summary>
+    /// <see cref="CaptureTarget()"/>, optionally without the UI Automation caret lookup (Chrome &amp; co.): only menus and
+    /// field prompts are placed at the caret, and the lookup costs time on every plain expansion.
+    /// </summary>
+    ActiveTarget? CaptureTarget(bool locateCaret) => CaptureTarget();
+
     /// <summary>Checks whether a previously captured target is still the same entity and can receive input.</summary>
     TargetValidation ValidateTarget(ActiveTarget target);
 

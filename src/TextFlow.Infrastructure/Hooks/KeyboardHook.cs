@@ -27,6 +27,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
     private const int TranslateBufferLength = 8;
 
     private static KeyboardHook? s_instance;
+    private static readonly PointerReleased PointerReleasedEvent = new(); // no allocation per click
 
     private readonly TriggerMatcher _matcher;
     private readonly MessageLoopThread _thread;
@@ -238,6 +239,10 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
                 var point = ((MSLLHOOKSTRUCT*)lParam.Value)->pt;
                 self._events.Writer.TryWrite(new MenuInterrupted(point.X, point.Y));
             }
+        }
+        else if (code >= 0 && message == PInvoke.WM_LBUTTONUP && s_instance is { } released)
+        {
+            released._events.Writer.TryWrite(PointerReleasedEvent);
         }
 
         return PInvoke.CallNextHookEx(default, code, wParam, lParam);

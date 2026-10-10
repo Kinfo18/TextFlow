@@ -100,9 +100,15 @@ internal sealed class FakeResolver : ITargetResolver
     /// <summary>Runs inside CaptureTarget: simulates something happening while UIA is busy.</summary>
     public Action? DuringCapture { get; set; }
 
-    public ActiveTarget? CaptureTarget()
+    /// <summary>Whether each capture asked for the UI Automation caret lookup, in order.</summary>
+    public List<bool> CaretLookups { get; } = [];
+
+    public ActiveTarget? CaptureTarget() => CaptureTarget(locateCaret: true);
+
+    public ActiveTarget? CaptureTarget(bool locateCaret)
     {
         Captures++;
+        CaretLookups.Add(locateCaret);
         DuringCapture?.Invoke();
         return Target;
     }

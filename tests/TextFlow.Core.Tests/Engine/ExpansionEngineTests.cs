@@ -115,6 +115,20 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
         Assert.Contains(_sink.Events, e => e is EngineStateChanged { State: EngineState.Running });
     }
 
+    [Theory]
+    [InlineData("cc", false)] // plain text: expanded without the caret lookup
+    [InlineData("LC", true)] // the menu opens at the caret
+    [InlineData("s1", true)] // so does the fields prompt
+    public async Task Trigger_LooksUpTheCaret_OnlyWhenSomethingIsPlacedThere(string trigger, bool expected)
+    {
+        await StartAsync();
+        _resolver.CaretLookups.Clear();
+
+        await TypeAsync(new TriggerTyped(Match(trigger), FakeResolver.Window));
+
+        Assert.Equal(expected, _resolver.CaretLookups[0]);
+    }
+
     [Fact]
     public async Task SnippetTrigger_InsertsContentReplacingTheTrigger_AndPlaysSound()
     {

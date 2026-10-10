@@ -21,6 +21,12 @@ public sealed record ForegroundChanged(nint Window) : HookEvent;
 /// </param>
 public sealed record FocusChanged(nint Window, bool KnownField = false) : HookEvent;
 
+/// <summary>
+/// The left mouse button went up. A click into a field that already has the focus raises no focus event, and
+/// filled-in fields waiting for the user to click back into the original field must still notice it.
+/// </summary>
+public sealed record PointerReleased : HookEvent;
+
 /// <summary>The user is typing (throttled to one every few seconds, no content): time to wake the audio device.</summary>
 public sealed record TypingActivity : HookEvent;
 

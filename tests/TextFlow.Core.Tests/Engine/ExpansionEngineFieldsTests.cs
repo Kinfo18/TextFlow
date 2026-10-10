@@ -206,6 +206,85 @@ public sealed partial class ExpansionEngineTests
     }
 
     [Fact]
+    public async Task RestoredFocus_ReportedAfterTheFirstWait_IsStillInserted()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        var original = _resolver.Target;
+        _resolver.Target = InField("customer-name");
+        var restoredAt = (long?)null;
+        _resolver.OnRestore = _ =>
+        {
+            restoredAt = Environment.TickCount64;
+            return true;
+        };
+        // Chrome reports the focus it was given only later, past FocusReturnTimeout (2026-10-10).
+        var lag = ExpansionEngineOptions.Default.FocusReturnTimeout + TimeSpan.FromMilliseconds(200);
+        _resolver.DuringCapture = () =>
+        {
+            if (restoredAt is { } at && Environment.TickCount64 - at >= lag.TotalMilliseconds)
+            {
+                _resolver.Target = original;
+            }
+        };
+
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+
+        Assert.Equal(0, _fields.WaitingShown);
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+    }
+
+    [Fact]
+    public async Task RestoredFocusThatNeverShows_WaitsAndSaysSo()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        _resolver.Target = InField("customer-name");
+        _resolver.OnRestore = _ => true;
+
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+
+        Assert.Equal(1, _fields.WaitingShown);
+        Assert.Contains(_sink.Events, e => e is FieldsWaiting { FocusRestored: true });
+    }
+
+    [Fact]
+    public async Task WhileWaiting_AClickInTheFieldThatAlreadyHasTheFocus_InsertsTheText()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        var original = _resolver.Target;
+        _resolver.Target = InField("customer-name");
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+        Assert.Equal(1, _fields.WaitingShown);
+
+        _resolver.Target = original; // focus is back without a focus event (TextFlow put it there)
+        await TypeAsync(new PointerReleased());
+
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+        Assert.Equal(1, _fields.Cancels);
+        Assert.Contains(_sink.Events, e => e is FieldsClosed { Reason: FieldsCloseReason.Inserted });
+    }
+
+    [Fact]
+    public async Task AClick_WithNothingWaiting_DoesNothing()
+    {
+        await StartAsync();
+        var captures = _resolver.Captures;
+
+        await TypeAsync(new PointerReleased());
+
+        Assert.Equal(captures, _resolver.Captures);
+        Assert.Empty(_insertion.Requests);
+    }
+
+    [Fact]
     public async Task WhenWindowsRefusesToReturnToTheWindow_ItWaits()
     {
         await StartAsync();

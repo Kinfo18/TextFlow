@@ -30,7 +30,9 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         _time = time ?? TimeProvider.System;
     }
 
-    public ActiveTarget? CaptureTarget()
+    public ActiveTarget? CaptureTarget() => CaptureTarget(locateCaret: true);
+
+    public ActiveTarget? CaptureTarget(bool locateCaret)
     {
         var foreground = PInvoke.GetForegroundWindow();
         if (foreground.IsNull)
@@ -53,7 +55,7 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         var control = processId == (uint)Environment.ProcessId
             ? FocusedControlInfo.Unknown
             : _controlInspector.Inspect(processId) ?? FocusedControlInfo.Unknown;
-        if (caret is null && processId != (uint)Environment.ProcessId)
+        if (caret is null && locateCaret && processId != (uint)Environment.ProcessId)
         {
             caret = _controlInspector.LocateCaret(processId); // Chrome & co. draw their own caret (H4.4)
         }

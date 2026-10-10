@@ -32,6 +32,12 @@ public sealed record MenuClosed(DateTimeOffset At, MenuCloseReason Reason) : Dia
 public sealed record FieldsShown(DateTimeOffset At, [property: SafeToLog] string TargetProcess, int FieldCount, bool AnchoredToCaret)
     : DiagnosticEvent(At);
 
+/// <summary>
+/// The values are in but the original field did not get the focus back: the prompt now waits for the user to return.
+/// <paramref name="FocusRestored"/>: TextFlow had put the focus back in that field itself (value copied from the same page).
+/// </summary>
+public sealed record FieldsWaiting(DateTimeOffset At, bool FocusRestored) : DiagnosticEvent(At);
+
 public sealed record FieldsClosed(DateTimeOffset At, FieldsCloseReason Reason) : DiagnosticEvent(At);
 
 public sealed record TargetRejected(DateTimeOffset At, [property: SafeToLog] string TargetProcess, RejectionReason Reason) : DiagnosticEvent(At);
