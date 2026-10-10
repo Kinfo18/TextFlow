@@ -32,6 +32,10 @@ internal sealed class FakeHook : IInputHook
         return true;
     }
 
+    public int KnownFieldsForgotten { get; private set; }
+
+    public void ForgetKnownFields() => KnownFieldsForgotten++;
+
     /// <summary>Raises a focus change the way the hook does: version bump, capture off at once.</summary>
     public void RaiseFocusChange(HookEvent evt)
     {

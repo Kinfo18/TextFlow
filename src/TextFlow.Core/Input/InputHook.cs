@@ -15,7 +15,11 @@ public sealed record ForegroundChanged(nint Window) : HookEvent;
 /// Keyboard focus moved inside the foreground window (EVENT_OBJECT_FOCUS), e.g. from the user name to the password
 /// field of a web login. Capture is already off: the engine re-evaluates the policy (risk R4).
 /// </summary>
-public sealed record FocusChanged(nint Window) : HookEvent;
+/// <param name="KnownField">
+/// The focus landed back on a field the policy already allowed in this window (<see cref="KnownFields"/>): capture
+/// stayed on, and the engine only re-checks it, turning capture off if the field is no longer allowed.
+/// </param>
+public sealed record FocusChanged(nint Window, bool KnownField = false) : HookEvent;
 
 /// <summary>The user is typing (throttled to one every few seconds, no content): time to wake the audio device.</summary>
 public sealed record TypingActivity : HookEvent;
@@ -58,6 +62,9 @@ public interface IInputHook
     bool MenuMode { get; set; }
 
     Task FlushPendingAsync(int version);
+
+    /// <summary>A known field failed its re-check: every field of the window is evaluated afresh from now on.</summary>
+    void ForgetKnownFields();
 
     Task ReplaceTriggersAsync(IEnumerable<TriggerDefinition> triggers);
 }

@@ -237,6 +237,7 @@ public sealed partial class ExpansionEngine
         MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
         ForegroundChanged or FocusChanged when _waiting is not null => FocusMovedWhileWaitingAsync((HookEvent)work),
         ForegroundChanged => HandleForegroundChangedAsync(),
+        FocusChanged { KnownField: true } when _open is null => RecheckKnownFieldAsync(),
         FocusChanged when _open is null => RefreshCaptureUnlessSupersededAsync(),
         TypingActivity => WarmFeedback(),
         MenuFinished finished when _open?.Session == finished.Session => FinishMenuAsync(finished.Step),
@@ -444,7 +445,7 @@ public sealed partial class ExpansionEngine
     /// change is already queued, capture stays off and that one does the (UI Automation) evaluation.
     /// </summary>
     private Task RefreshCaptureUnlessSupersededAsync() =>
-        _hook.Events.TryPeek(out var next) && next is FocusChanged or ForegroundChanged
+        _hook.Events.TryPeek(out var next) && next is FocusChanged { KnownField: false } or ForegroundChanged
             ? Task.CompletedTask
             : RefreshCaptureAsync();
 
@@ -493,6 +494,25 @@ public sealed partial class ExpansionEngine
     {
         _pendingTimer?.Dispose();
         _pendingTimer = null;
+    }
+
+    /// <summary>
+    /// Capture stayed on for a field allowed before: confirm it without a gap. Only a clear "no" (it became a password
+    /// field, say) turns capture off; no answer from UI Automation keeps the earlier verdict.
+    /// </summary>
+    private async Task RecheckKnownFieldAsync()
+    {
+        if (_paused)
+        {
+            return;
+        }
+
+        var target = await CaptureTargetAsync().ConfigureAwait(false);
+        if (target is not null && !Volatile.Read(ref _policy).Evaluate(target, TextFlowFeature.Expansion).IsAllowed)
+        {
+            _hook.CaptureEnabled = false;
+            _hook.ForgetKnownFields();
+        }
     }
 
     private async Task RefreshCaptureAsync()

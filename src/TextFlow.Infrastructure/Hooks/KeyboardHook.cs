@@ -42,6 +42,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
     private volatile bool _captureEnabled;
     private volatile bool _menuMode;
     private bool _menuLeftByTyping; // hook thread only: the matcher already holds what follows the menu
+    private readonly KnownFields _knownFields = new(); // hook thread only
     /// <summary>At most one <see cref="TypingActivity"/> per interval: enough to keep audio awake, cheap for the hook.</summary>
     private static readonly long ActivityInterval = Stopwatch.Frequency * 4;
 
@@ -87,11 +88,14 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
 
     public int FocusVersion => Volatile.Read(ref _focusVersion);
 
+    public void ForgetKnownFields() => _knownFields.Clear();
+
     public bool TryEnableCapture(int focusVersion)
     {
         _captureEnabled = true;
         if (Volatile.Read(ref _focusVersion) == focusVersion)
         {
+            _knownFields.Allowed(focusVersion);
             return true;
         }
 
@@ -250,6 +254,7 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
 
         Interlocked.Increment(ref self._focusVersion);
         self._captureEnabled = false; // fail closed until the engine has evaluated the new foreground
+        self._knownFields.ForegroundChanged();
         self.ResetState();
         self._events.Writer.TryWrite(new ForegroundChanged((nint)hwnd.Value));
     }
@@ -267,8 +272,18 @@ public sealed unsafe class KeyboardHook : IInputHook, IReinstallableHook, IDispo
             return;
         }
 
-        Interlocked.Increment(ref self._focusVersion);
+        var field = new FieldId((nint)hwnd.Value, idObject, idChild);
+        if (self._captureEnabled && self._knownFields.IsKnown(field))
+        {
+            // Back on a field already allowed in this window (Notepad bounces the focus after each paste): keep the
+            // typed text and keep capturing; the engine re-checks it and turns capture off if it is no longer allowed.
+            self._events.Writer.TryWrite(new FocusChanged((nint)hwnd.Value, KnownField: true));
+            return;
+        }
+
+        var version = Interlocked.Increment(ref self._focusVersion);
         self._captureEnabled = false;
+        self._knownFields.Evaluating(field, version);
         self.ForgetText(); // a click already reset; browsers also fire focus mid-word, which must not look like a word start
         self._events.Writer.TryWrite(new FocusChanged((nint)hwnd.Value));
     }
