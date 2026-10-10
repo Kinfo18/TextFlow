@@ -1,5 +1,6 @@
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using TextFlow.Core.Input;
@@ -8,42 +9,78 @@ using Windows.UI.Core;
 
 namespace TextFlow.App.Pages;
 
-/// <summary>Pause shortcut recorder and prefix wait (H4.3).</summary>
+/// <summary>Shortcut recorder for pause (H4.3) and the command palette (D11), and the prefix wait.</summary>
 public sealed partial class SettingsPage
 {
-    private bool _recording;
+    private enum Shortcut
+    {
+        Pause,
+        Palette,
+    }
 
-    private static string CurrentGesture => App.Current.PauseHotkey?.Gesture ?? HotkeyGesture.DefaultPause.ToString();
+    private Shortcut? _recording;
+
+    private static string Gesture(Shortcut shortcut) => shortcut == Shortcut.Pause
+        ? App.Current.PauseHotkey?.Gesture ?? HotkeyGesture.DefaultPause.ToString()
+        : App.Current.PaletteHotkey?.Gesture ?? HotkeyGesture.DefaultPalette.ToString();
+
+    private (TextBlock Text, Button Record, TextBlock Status) Controls(Shortcut shortcut) => shortcut == Shortcut.Pause
+        ? (HotkeyText, RecordHotkeyButton, HotkeyStatus)
+        : (PaletteHotkeyText, RecordPaletteButton, PaletteHotkeyStatus);
 
     private void LoadHotkey()
     {
-        HotkeyText.Text = CurrentGesture;
+        HotkeyText.Text = Gesture(Shortcut.Pause);
+        PaletteHotkeyText.Text = Gesture(Shortcut.Palette);
+        if (App.Current.PaletteHotkey is { Registered: false } palette)
+        {
+            ShowHotkeyStatus(Shortcut.Palette, $"Otra aplicación ya usa {palette.Gesture}: elige otro atajo para la paleta.");
+        }
+
         PreviewKeyDown += OnPagePreviewKeyDown;
     }
 
-    private void OnRecordHotkey(object sender, RoutedEventArgs e)
+    private void OnRecordHotkey(object sender, RoutedEventArgs e) => ToggleRecording(Shortcut.Pause);
+
+    private void OnRecordPaletteHotkey(object sender, RoutedEventArgs e) => ToggleRecording(Shortcut.Palette);
+
+    private void OnResetHotkey(object sender, RoutedEventArgs e) => Reset(Shortcut.Pause, HotkeyGesture.DefaultPause);
+
+    private void OnResetPaletteHotkey(object sender, RoutedEventArgs e) => Reset(Shortcut.Palette, HotkeyGesture.DefaultPalette);
+
+    private void ToggleRecording(Shortcut shortcut)
     {
-        if (_recording)
+        var wasRecording = _recording;
+        if (wasRecording is { } current)
         {
-            StopRecording(null);
-            return;
+            StopRecording(current, null);
         }
 
-        _recording = true;
-        HotkeyText.Text = "Pulsa la combinación…";
-        RecordHotkeyButton.Content = "Cancelar";
-        ShowHotkeyStatus("Usa Ctrl, Alt o Win con una letra, un número, F1-F24 o Pausa. Esc cancela.");
+        if (wasRecording == shortcut)
+        {
+            return; // the button said "Cancelar"
+        }
+
+        _recording = shortcut;
+        var (text, record, _) = Controls(shortcut);
+        text.Text = "Pulsa la combinación…";
+        record.Content = "Cancelar";
+        ShowHotkeyStatus(shortcut, "Usa Ctrl, Alt o Win con una letra, un número, F1-F24, Pausa o Espacio. Esc cancela.");
     }
 
-    private void OnResetHotkey(object sender, RoutedEventArgs e)
+    private void Reset(Shortcut shortcut, HotkeyGesture gesture)
     {
-        StopRecording(null);
-        TryApply(HotkeyGesture.DefaultPause);
+        if (_recording is { } current)
+        {
+            StopRecording(current, null);
+        }
+
+        TryApply(shortcut, gesture);
     }
 
     private void OnPagePreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (!_recording)
+        if (_recording is not { } shortcut)
         {
             return;
         }
@@ -51,7 +88,7 @@ public sealed partial class SettingsPage
         e.Handled = true; // while recording no key reaches buttons, access keys or the Alt menu
         if (e.Key == VirtualKey.Escape)
         {
-            StopRecording(null);
+            StopRecording(shortcut, null);
             return;
         }
 
@@ -63,52 +100,60 @@ public sealed partial class SettingsPage
         var gesture = new HotkeyGesture(CurrentModifiers(), (uint)e.Key);
         if (!HotkeyGesture.TryParse(gesture.ToString(), out var valid) || valid != gesture)
         {
-            ShowHotkeyStatus("Esa combinación no sirve: añade Ctrl, Alt o Win y usa una letra, un número, F1-F24 o Pausa.");
+            ShowHotkeyStatus(shortcut, "Esa combinación no sirve: añade Ctrl, Alt o Win y usa una letra, un número, F1-F24, Pausa o Espacio.");
             return;
         }
 
         if (gesture.OverlapsAltGr)
         {
-            ShowHotkeyStatus($"{gesture} es AltGr en tu teclado (por ejemplo AltGr+2 = @): te impediría escribir esos caracteres. Añade Shift o usa otra tecla.");
+            ShowHotkeyStatus(shortcut, $"{gesture} es AltGr en tu teclado (por ejemplo AltGr+2 = @): te impediría escribir esos caracteres. Añade Shift o usa otra tecla.");
             return;
         }
 
-        StopRecording(gesture);
+        if (gesture.ToString() == Gesture(shortcut == Shortcut.Pause ? Shortcut.Palette : Shortcut.Pause))
+        {
+            ShowHotkeyStatus(shortcut, $"{gesture} ya es el otro atajo de TextFlow.");
+            return;
+        }
+
+        StopRecording(shortcut, gesture);
     }
 
-    private void StopRecording(HotkeyGesture? gesture)
+    private void StopRecording(Shortcut shortcut, HotkeyGesture? gesture)
     {
-        _recording = false;
-        RecordHotkeyButton.Content = "Cambiar";
-        HotkeyText.Text = CurrentGesture;
-        HideHotkeyStatus();
+        _recording = null;
+        var (text, record, _) = Controls(shortcut);
+        record.Content = "Cambiar";
+        text.Text = Gesture(shortcut);
+        HideHotkeyStatus(shortcut);
         if (gesture is not null)
         {
-            TryApply(gesture);
+            TryApply(shortcut, gesture);
         }
     }
 
-    private void TryApply(HotkeyGesture gesture)
+    private void TryApply(Shortcut shortcut, HotkeyGesture gesture)
     {
-        var applied = App.Current.SetPauseHotkey(gesture);
-        HotkeyText.Text = CurrentGesture;
+        var applied = shortcut == Shortcut.Pause ? App.Current.SetPauseHotkey(gesture) : App.Current.SetPaletteHotkey(gesture);
+        Controls(shortcut).Text.Text = Gesture(shortcut);
         if (applied)
         {
-            HideHotkeyStatus();
+            HideHotkeyStatus(shortcut);
         }
         else
         {
-            ShowHotkeyStatus($"Otra aplicación ya usa {gesture}. Se mantiene el atajo anterior.");
+            ShowHotkeyStatus(shortcut, $"Otra aplicación ya usa {gesture}. Se mantiene el atajo anterior.");
         }
     }
 
-    private void ShowHotkeyStatus(string text)
+    private void ShowHotkeyStatus(Shortcut shortcut, string text)
     {
-        HotkeyStatus.Text = text;
-        HotkeyStatus.Visibility = Visibility.Visible;
+        var status = Controls(shortcut).Status;
+        status.Text = text;
+        status.Visibility = Visibility.Visible;
     }
 
-    private void HideHotkeyStatus() => HotkeyStatus.Visibility = Visibility.Collapsed;
+    private void HideHotkeyStatus(Shortcut shortcut) => Controls(shortcut).Status.Visibility = Visibility.Collapsed;
 
     private static bool IsModifier(VirtualKey key) => key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl
         or VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift

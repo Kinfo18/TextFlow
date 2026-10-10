@@ -5,34 +5,90 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="Transparent">
 
+    <!-- Windows 11 Settings look (C10): one card per setting, icon + title + description, the control on the right. -->
+    <Page.Resources>
+        <Style x:Key="SettingCard" TargetType="Border" BasedOn="{StaticResource Card}">
+            <Setter Property="Padding" Value="16,14" />
+        </Style>
+        <Style x:Key="SettingIcon" TargetType="FontIcon">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="2,0,4,0" />
+        </Style>
+        <Style x:Key="SettingTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SettingDescription" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+            <Setter Property="Margin" Value="0,20,0,4" />
+        </Style>
+    </Page.Resources>
+
     <ScrollViewer Padding="36,24,36,24">
-        <StackPanel Spacing="4" MaxWidth="720" HorizontalAlignment="Left">
-            <TextBlock Text="Configuración" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,16" />
+        <StackPanel Spacing="4" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Configuración" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,8" />
 
-            <TextBlock Text="Apariencia" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,4" />
-            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <RadioButtons x:Name="ThemeChoice" Header="Tema" SelectionChanged="OnThemeChanged">
-                    <x:String>Usar el de Windows</x:String>
-                    <x:String>Claro</x:String>
-                    <x:String>Oscuro</x:String>
-                </RadioButtons>
+            <TextBlock Text="General" Style="{StaticResource SectionHeader}" Margin="0,8,0,4" />
+            <Border Style="{StaticResource SettingCard}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE790;" Style="{StaticResource SettingIcon}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="Tema" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="La ventana, el menú de grupo y los formularios de campos" Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <ComboBox x:Name="ThemeChoice" Grid.Column="2" MinWidth="180" VerticalAlignment="Center"
+                              AutomationProperties.Name="Tema" SelectionChanged="OnThemeChanged">
+                        <x:String>Usar el de Windows</x:String>
+                        <x:String>Claro</x:String>
+                        <x:String>Oscuro</x:String>
+                    </ComboBox>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingCard}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE7E8;" Style="{StaticResource SettingIcon}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="Iniciar con Windows" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Text="Arranca en la bandeja, sin abrir esta ventana" Style="{StaticResource SettingDescription}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="StartWithWindowsSwitch" Grid.Column="2" MinWidth="0" VerticalAlignment="Center"
+                                  AutomationProperties.Name="Iniciar con Windows"
+                                  OnContent="Activado" OffContent="Desactivado" Toggled="OnStartWithWindowsToggled" />
+                </Grid>
             </Border>
 
-            <TextBlock Text="Inicio" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
-            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <ToggleSwitch x:Name="StartWithWindowsSwitch" Header="Iniciar TextFlow con Windows (en la bandeja)"
-                              OnContent="Activado" OffContent="Desactivado" Toggled="OnStartWithWindowsToggled" />
-            </Border>
-
-            <TextBlock Text="Sonido" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
-            <Border x:Name="SoundCard" Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <TextBlock Text="Sonido" Style="{StaticResource SectionHeader}" />
+            <Border x:Name="SoundCard" Style="{StaticResource SettingCard}">
                 <StackPanel Spacing="12">
-                    <ToggleSwitch x:Name="SoundSwitch" Header="Sonar al expandir"
-                                  OnContent="Activado" OffContent="Desactivado" Toggled="OnSoundToggled" />
-                    <Grid ColumnSpacing="12">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE767;" Style="{StaticResource SettingIcon}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Sonar al expandir" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Un sonido corto confirma cada expansión" Style="{StaticResource SettingDescription}" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="SoundSwitch" Grid.Column="2" MinWidth="0" VerticalAlignment="Center"
+                                      AutomationProperties.Name="Sonar al expandir"
+                                      OnContent="Activado" OffContent="Desactivado" Toggled="OnSoundToggled" />
+                    </Grid>
+                    <Grid ColumnSpacing="12" Margin="40,0,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" MaxWidth="360" />
                             <ColumnDefinition Width="Auto" />
@@ -48,91 +104,151 @@
                             </StackPanel>
                         </Button>
                     </Grid>
-                    <TextBlock x:Name="SoundStatus" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7"
-                               Visibility="Collapsed" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SoundStatus" Style="{StaticResource SettingDescription}" Margin="40,0,0,0" Visibility="Collapsed" />
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="Atajo y tiempos" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
-            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <StackPanel Spacing="20">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Pausar o reanudar TextFlow" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Border x:Name="HotkeyBox" MinWidth="200" Padding="12,6" CornerRadius="6" BorderThickness="1"
+            <TextBlock Text="Teclado" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingCard}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE765;" Style="{StaticResource SettingIcon}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Pausar o reanudar TextFlow" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Atajo global, funciona en cualquier aplicación" Style="{StaticResource SettingDescription}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Border x:Name="HotkeyBox" MinWidth="170" Padding="12,6" CornerRadius="6" BorderThickness="1"
                                     BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                     Background="{ThemeResource ControlFillColorDefaultBrush}">
                                 <TextBlock x:Name="HotkeyText" FontFamily="Consolas" VerticalAlignment="Center" />
                             </Border>
-                            <Button x:Name="RecordHotkeyButton" Content="Cambiar" Click="OnRecordHotkey" />
-                            <Button x:Name="ResetHotkeyButton" Content="Restablecer" Click="OnResetHotkey" />
+                            <Button x:Name="RecordHotkeyButton" Content="Cambiar" Click="OnRecordHotkey"
+                                    AutomationProperties.Name="Cambiar el atajo de pausa" />
+                            <Button x:Name="ResetHotkeyButton" Content="Restablecer" Click="OnResetHotkey"
+                                    AutomationProperties.Name="Restablecer el atajo de pausa" />
                         </StackPanel>
-                        <TextBlock x:Name="HotkeyStatus" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8"
-                                   TextWrapping="Wrap" Visibility="Collapsed" />
+                    </Grid>
+                    <TextBlock x:Name="HotkeyStatus" Style="{StaticResource SettingDescription}" Margin="40,0,0,0" Opacity="0.85" Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingCard}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE721;" Style="{StaticResource SettingIcon}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Paleta de comandos" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="Busca cualquier comando por nombre y lo inserta en el campo donde estabas" Style="{StaticResource SettingDescription}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Border MinWidth="170" Padding="12,6" CornerRadius="6" BorderThickness="1"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                <TextBlock x:Name="PaletteHotkeyText" FontFamily="Consolas" VerticalAlignment="Center" />
+                            </Border>
+                            <Button x:Name="RecordPaletteButton" Content="Cambiar" Click="OnRecordPaletteHotkey"
+                                    AutomationProperties.Name="Cambiar el atajo de la paleta" />
+                            <Button Content="Restablecer" Click="OnResetPaletteHotkey"
+                                    AutomationProperties.Name="Restablecer el atajo de la paleta" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="PaletteHotkeyStatus" Style="{StaticResource SettingDescription}" Margin="40,0,0,0" Opacity="0.85" Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingCard}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE916;" Style="{StaticResource SettingIcon}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="PrefixHeader" Style="{StaticResource SettingTitle}" />
+                        <TextBlock Style="{StaticResource SettingDescription}"
+                                   Text="Si una abreviatura es el principio de otra (dir1 y dir12), TextFlow espera este tiempo por si sigues escribiendo antes de expandir la corta." />
                     </StackPanel>
+                    <Slider x:Name="PrefixSlider" Grid.Column="2" Width="220" VerticalAlignment="Center"
+                            AutomationProperties.Name="Espera de abreviaturas ambiguas"
+                            Minimum="200" Maximum="2000" StepFrequency="100" TickFrequency="300" TickPlacement="Outside"
+                            ValueChanged="OnPrefixChanged" />
+                </Grid>
+            </Border>
 
-                    <StackPanel Spacing="4">
-                        <Slider x:Name="PrefixSlider" MaxWidth="360" HorizontalAlignment="Left" Width="360"
-                                Minimum="200" Maximum="2000" StepFrequency="100" TickFrequency="300" TickPlacement="Outside"
-                                ValueChanged="OnPrefixChanged">
-                            <Slider.Header>
-                                <TextBlock x:Name="PrefixHeader" />
-                            </Slider.Header>
-                        </Slider>
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" MaxWidth="560"
-                                   HorizontalAlignment="Left"
-                                   Text="Cuando una abreviatura es el principio de otra (dir1 y dir12), TextFlow espera este tiempo por si sigues escribiendo antes de expandir la corta." />
+            <TextBlock Text="Exclusiones por aplicación" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingCard}">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE72E;" Style="{StaticResource SettingIcon}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Aplicaciones donde TextFlow no actúa" Style="{StaticResource SettingTitle}" />
+                            <TextBlock Text="No expande abreviaturas ni abre menús en ellas" Style="{StaticResource SettingDescription}" />
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel Margin="40,0,0,0" Spacing="12">
+                        <StackPanel x:Name="ExclusionList" Spacing="4" />
+                        <TextBlock x:Name="NoExclusions" Text="Ninguna todavía." Style="{StaticResource SettingDescription}" Opacity="0.6" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBox x:Name="ExclusionInput" Width="220" PlaceholderText="programa.exe" KeyDown="OnExclusionInputKeyDown"
+                                     AutomationProperties.Name="Programa a excluir" />
+                            <Button Content="Agregar" Click="OnAddExclusion" />
+                            <DropDownButton Content="Apps abiertas">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout x:Name="RunningAppsFlyout" Placement="Bottom" Opening="OnRunningAppsOpening" />
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
+                        </StackPanel>
+                        <TextBlock x:Name="ExclusionStatus" Style="{StaticResource SettingDescription}" Opacity="0.85" Visibility="Collapsed" />
+                        <Expander Header="Exclusiones integradas (siempre activas)" HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left">
+                            <TextBlock x:Name="BuiltinList" Style="{StaticResource SettingDescription}" Opacity="0.85" />
+                        </Expander>
                     </StackPanel>
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="Exclusiones por aplicación" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
-            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <TextBlock Text="Acerca de" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingCard}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="TextFlow no expande abreviaturas ni abre menús en estas aplicaciones." TextWrapping="Wrap" />
-                    <StackPanel x:Name="ExclusionList" Spacing="4" />
-                    <TextBlock x:Name="NoExclusions" Text="Ninguna todavía." Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBox x:Name="ExclusionInput" Width="220" PlaceholderText="programa.exe" KeyDown="OnExclusionInputKeyDown" />
-                        <Button Content="Agregar" Click="OnAddExclusion" />
-                        <DropDownButton Content="Apps abiertas">
-                            <DropDownButton.Flyout>
-                                <MenuFlyout x:Name="RunningAppsFlyout" Placement="Bottom" Opening="OnRunningAppsOpening" />
-                            </DropDownButton.Flyout>
-                        </DropDownButton>
-                    </StackPanel>
-                    <TextBlock x:Name="ExclusionStatus" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8"
-                               TextWrapping="Wrap" Visibility="Collapsed" />
-                    <Expander Header="Exclusiones integradas (siempre activas)" HorizontalAlignment="Stretch"
-                              HorizontalContentAlignment="Left">
-                        <TextBlock x:Name="BuiltinList" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.8" />
-                    </Expander>
-                </StackPanel>
-            </Border>
-
-            <TextBlock Text="Acerca de TextFlow" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,4" />
-            <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <StackPanel Spacing="12">
-                    <StackPanel Spacing="2">
-                        <TextBlock x:Name="VersionText" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                        <TextBlock x:Name="InstallKindText" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="CheckUpdatesButton" Click="OnCheckUpdates">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE895;" FontSize="14" />
-                                <TextBlock Text="Buscar actualizaciones" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="RestartToUpdateButton" Style="{StaticResource AccentButtonStyle}" Visibility="Collapsed"
-                                Click="OnRestartToUpdate" Content="Reiniciar y actualizar" />
-                        <ProgressRing x:Name="UpdateProgress" Width="20" Height="20" IsActive="False" />
-                    </StackPanel>
-                    <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap" Visibility="Collapsed" />
-                    <HyperlinkButton Content="Ver todas las versiones en GitHub" Padding="0"
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE946;" Style="{StaticResource SettingIcon}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock x:Name="VersionText" Style="{StaticResource SettingTitle}" />
+                            <TextBlock x:Name="InstallKindText" Style="{StaticResource SettingDescription}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ProgressRing x:Name="UpdateProgress" Width="20" Height="20" IsActive="False" />
+                            <Button x:Name="RestartToUpdateButton" Style="{StaticResource AccentButtonStyle}" Visibility="Collapsed"
+                                    Click="OnRestartToUpdate" Content="Reiniciar y actualizar" />
+                            <Button x:Name="CheckUpdatesButton" Click="OnCheckUpdates">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE895;" FontSize="14" />
+                                    <TextBlock Text="Buscar actualizaciones" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="UpdateStatus" Margin="40,0,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
+                    <HyperlinkButton Content="Ver todas las versiones en GitHub" Padding="0" Margin="40,0,0,0"
                                      NavigateUri="https://github.com/Kinfo18/TextFlow/releases" />
                 </StackPanel>
             </Border>
