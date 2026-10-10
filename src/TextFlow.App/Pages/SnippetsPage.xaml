@@ -20,20 +20,24 @@
         </MenuFlyout>
     </Page.Resources>
 
-    <Grid Padding="24,16,24,16" ColumnSpacing="12" RowSpacing="12">
-        <!-- Groups on the left; the group's snippets above the editor, so a narrow window keeps two readable columns. -->
+    <Grid x:Name="Root" Padding="24,16,24,16" ColumnSpacing="12" RowSpacing="12" SizeChanged="OnRootSizeChanged">
+        <!--
+            Wide window: groups | commands | editor side by side (C9). Narrow window: the commands sit above the editor,
+            so two readable columns still fit. SnippetsPage.Layout.cs switches between them.
+        -->
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="2*" MinHeight="160" />
-            <RowDefinition Height="3*" MinHeight="240" />
+            <RowDefinition x:Name="TopRow" Height="2*" MinHeight="160" />
+            <RowDefinition x:Name="BottomRow" Height="3*" MinHeight="240" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*" MinWidth="200" />
-            <ColumnDefinition Width="5*" MinWidth="320" />
+            <ColumnDefinition x:Name="GroupColumn" Width="2*" MinWidth="200" />
+            <ColumnDefinition x:Name="ListColumn" Width="5*" MinWidth="320" />
+            <ColumnDefinition x:Name="EditorColumn" Width="0" />
         </Grid.ColumnDefinitions>
 
         <!-- Hand-filled XXX blanks can become template fields (H5.2) -->
-        <InfoBar x:Name="BlankHint" Grid.ColumnSpan="2" IsOpen="False" Severity="Informational" IsClosable="True"
+        <InfoBar x:Name="BlankHint" Grid.ColumnSpan="3" IsOpen="False" Severity="Informational" IsClosable="True"
                  Message="Conviértelos en campos: al expandir, se rellenan solos con lo que copies.">
             <InfoBar.ActionButton>
                 <Button Content="Convertir…" Click="OnConvertBlanks" />
@@ -46,8 +50,17 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <AutoSuggestBox x:Name="SearchBox" PlaceholderText="Buscar abreviatura, nombre o texto" QueryIcon="Find"
-                            TextChanged="OnSearchChanged" />
+            <StackPanel Spacing="6">
+                <AutoSuggestBox x:Name="SearchBox" PlaceholderText="Buscar abreviatura, nombre o texto" QueryIcon="Find"
+                                TextChanged="OnSearchChanged" />
+                <ToggleButton x:Name="UnusedToggle" HorizontalAlignment="Stretch" Click="OnUnusedToggled"
+                              ToolTipService.ToolTip="Comandos que no has usado en los últimos 30 días (o nunca)">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE81C;" FontSize="12" />
+                        <TextBlock Text="Sin usar en 30 días" />
+                    </StackPanel>
+                </ToggleButton>
+            </StackPanel>
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
                 <!-- Horizontal only: long names and deep subgroups scroll sideways; the tree keeps its own vertical scroll. -->
@@ -60,7 +73,7 @@
         </Grid>
 
         <!-- Snippets of the group, or search results -->
-        <Grid Grid.Row="1" Grid.Column="1" RowSpacing="10">
+        <Grid x:Name="ListPane" Grid.Row="1" Grid.Column="1" RowSpacing="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -92,7 +105,7 @@
         </Grid>
 
         <!-- Editor (H3.3) -->
-        <Border Grid.Row="2" Grid.Column="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+        <Border x:Name="EditorPane" Grid.Row="2" Grid.Column="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
             <Grid>
                 <Grid.RowDefinitions>

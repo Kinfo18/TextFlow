@@ -33,6 +33,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     {
         InitializeComponent();
         Refresh();
+        _ = LoadUsageAsync();
     }
 
     private static LibraryGroup Library =>
@@ -51,7 +52,11 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         var selected = _groups.FirstOrDefault(pair => pair.Value.Id == _selectedGroupId).Key ?? rootNode;
         GroupTree.SelectedNode = selected;
 
-        if (SearchBox.Text.Trim().Length > 0)
+        if (UnusedToggle.IsChecked == true)
+        {
+            ShowUnused();
+        }
+        else if (SearchBox.Text.Trim().Length > 0)
         {
             ShowResults(SearchBox.Text);
         }
@@ -80,6 +85,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         {
             _selectedGroupId = group.Id;
             SearchBox.Text = string.Empty;
+            UnusedToggle.IsChecked = false;
             ShowGroup(group);
         }
     }
@@ -88,6 +94,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     {
         if (sender.Text.Trim().Length > 0)
         {
+            UnusedToggle.IsChecked = false;
             ShowResults(sender.Text);
         }
         else if (GroupTree.SelectedNode is { } node && _groups.TryGetValue(node, out var group))
@@ -164,24 +171,43 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         }
     }
 
-    private static ListViewItem Row(LibrarySnippet snippet, string? path)
+    private ListViewItem Row(LibrarySnippet snippet, string? path)
     {
         var abbreviation = new TextBlock
         {
             Text = snippet.Abbreviations.Count > 0 ? snippet.Abbreviations[0] : snippet.Name,
             FontWeight = FontWeights.SemiBold,
             Foreground = ThemeBrushes.Get("AccentTextFillColorPrimaryBrush"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
         };
+        var title = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+        title.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = abbreviation.Text, FontWeight = FontWeights.SemiBold, Foreground = abbreviation.Foreground });
+        if (snippet.Name.Length > 0 && snippet.Name != abbreviation.Text)
+        {
+            title.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = $"   {snippet.Name}" });
+        }
+
         var secondLine = new TextBlock { Text = path ?? Preview(snippet), Opacity = 0.65, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        var stack = new StackPanel { Padding = new Thickness(4, 6, 4, 6), Opacity = snippet.Enabled ? 1 : 0.5 };
-        stack.Children.Add(abbreviation);
-        stack.Children.Add(secondLine);
+        var text = new StackPanel();
+        text.Children.Add(title);
+        text.Children.Add(secondLine);
+        var uses = UsesText(snippet.Id);
+        var stack = new Grid { Padding = new Thickness(4, 6, 4, 6), ColumnSpacing = 10, Opacity = snippet.Enabled ? 1 : 0.5 };
+        stack.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        stack.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        stack.Children.Add(text);
+        if (uses is not null)
+        {
+            var badge = new TextBlock { Text = uses, FontSize = 12, Opacity = 0.65, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(badge, 1);
+            stack.Children.Add(badge);
+        }
+
         var item = new ListViewItem { Content = stack };
         // The visible content is a panel, so screen readers would announce nothing without a name.
         var name = snippet.Name.Length > 0 && snippet.Name != abbreviation.Text ? $", {snippet.Name}" : string.Empty;
         var state = snippet.Enabled ? string.Empty : ", desactivado";
-        AutomationProperties.SetName(item, $"{abbreviation.Text}{name}: {secondLine.Text}{state}");
+        var used = uses is null ? string.Empty : $", usado {uses}";
+        AutomationProperties.SetName(item, $"{abbreviation.Text}{name}: {secondLine.Text}{state}{used}");
         return item;
     }
 
