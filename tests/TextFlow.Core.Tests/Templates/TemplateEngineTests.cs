@@ -125,6 +125,24 @@ public class TemplateEngineTests
         Assert.Equal("[|]", Render("[{{clipboard}}|{{selection}}]").Text);
     }
 
+    [Theory]
+    [InlineData("Ana Pérez ")] // a double click on a web page takes the space after the word
+    [InlineData("Ana Pérez\r\n")] // a copied line or spreadsheet cell
+    [InlineData("\tAna Pérez\n\n")]
+    [InlineData("Ana Pérez ")] // non-breaking space
+    [InlineData("​Ana Pérez﻿")] // invisible zero-width marks
+    public void Render_Clipboard_DropsSpacesAndLineBreaksAroundTheCopiedValue(string copied)
+    {
+        Assert.Equal("Hola, Ana Pérez.", Render("Hola, {{clipboard}}.", vars: Vars(copied)).Text);
+    }
+
+    [Fact]
+    public void CopiedText_KeepsSpacesAndLineBreaksInside()
+    {
+        Assert.Equal("Calle 5 #10\r\nBogotá", CopiedText.Clean("  Calle 5 #10\r\nBogotá \r\n"));
+        Assert.Equal(string.Empty, CopiedText.Clean(" \r\n "));
+    }
+
     [Fact]
     public void Render_Cursor_ReportsCaretOffsetFromEnd_AndIsRemovedFromText()
     {

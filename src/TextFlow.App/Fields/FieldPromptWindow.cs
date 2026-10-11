@@ -266,7 +266,7 @@ internal sealed partial class FieldPromptWindow : Window
                 return;
             }
 
-            var text = (await view.GetTextAsync()).Trim();
+            var text = CopiedText.Clean(await view.GetTextAsync());
             if (text.Length == 0 || !_listening || _current < 0 || _current >= _boxes.Count || IsEcho(text))
             {
                 return;

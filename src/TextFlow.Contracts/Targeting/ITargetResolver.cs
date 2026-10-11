@@ -11,6 +11,13 @@ public interface ITargetResolver
     /// </summary>
     ActiveTarget? CaptureTarget(bool locateCaret) => CaptureTarget();
 
+    /// <summary>
+    /// <see cref="CaptureTarget(bool)"/> without the caret, giving UI Automation more time to say which element has the
+    /// focus: used to recognise the field a template was typed in, where no keystroke waits for the answer and a busy
+    /// web page may need longer than a typing-time check allows.
+    /// </summary>
+    ActiveTarget? CaptureTargetPatiently() => CaptureTarget(locateCaret: false);
+
     /// <summary>Checks whether a previously captured target is still the same entity and can receive input.</summary>
     TargetValidation ValidateTarget(ActiveTarget target);
 

@@ -128,7 +128,7 @@ public sealed partial class ExpansionEngine
             return;
         }
 
-        var (target, restored) = await ReturnToAsync(open.Target).ConfigureAwait(false);
+        var (target, restored, miss) = await ReturnToAsync(open.Target).ConfigureAwait(false);
         if (target is null)
         {
             // Still on the page the values came from (another tab cannot be switched to from here): wait for the user.
@@ -136,7 +136,7 @@ public sealed partial class ExpansionEngine
                 _ => _inbox.Writer.TryWrite(new WaitElapsed(open.Session)), null, _options.ReturnWaitTimeout, Timeout.InfiniteTimeSpan);
             _waiting = new Waiting(open.Target, text, caretOffset, open.FromMenu, open.SendEnter, open.Session, timer);
             _fieldPrompt!.ShowWaiting();
-            Record(new FieldsWaiting(Now, FocusRestored: restored));
+            Record(new FieldsWaiting(Now, FocusRestored: restored, miss));
             return;
         }
 
@@ -164,7 +164,7 @@ public sealed partial class ExpansionEngine
     /// <summary>While filled-in fields wait, every focus move checks whether the user is back in the original field.</summary>
     private async Task FocusMovedWhileWaitingAsync(HookEvent moved)
     {
-        await DeliverIfBackAsync().ConfigureAwait(false);
+        await DeliverIfBackAsync(clicked: false).ConfigureAwait(false);
 
         if (moved is ForegroundChanged)
         {
@@ -180,19 +180,49 @@ public sealed partial class ExpansionEngine
     /// Inserts the waiting text if the user is back in the original field. Runs on focus moves and on clicks: a click
     /// into a field that already has the focus (TextFlow put it back there) raises no focus event.
     /// </summary>
-    private async Task DeliverIfBackAsync()
+    /// <param name="clicked">
+    /// The user clicked: the page may report the new focus a moment later, so a click in the original window is
+    /// checked for a short while; and a click in a text box of that window counts as the way back, even if the page
+    /// rebuilt the box since the abbreviation was typed (2026-10-11: the text waited although the user clicked the chat).
+    /// </param>
+    private async Task DeliverIfBackAsync(bool clicked)
     {
         if (_waiting is not { } waiting || _paused)
         {
             return;
         }
 
-        var current = await CaptureTargetAsync().ConfigureAwait(false);
-        if (_waiting == waiting && IsSameField(waiting.Target, current))
+        var started = TimeProvider.System.GetTimestamp();
+        while (true)
         {
-            StopWaiting();
-            _fieldPrompt!.Cancel(); // the "go back" message has done its job
-            await DeliverAsync(current!, waiting.Text, waiting.CaretOffset, waiting.FromMenu, waiting.SendEnter).ConfigureAwait(false);
+            var current = await CaptureFieldAsync().ConfigureAwait(false);
+            if (_waiting != waiting)
+            {
+                return; // cancelled, given up or replaced meanwhile
+            }
+
+            if (IsSameField(waiting.Target, current) || (clicked && IsTextBoxOfSameWindow(waiting.Target, current)))
+            {
+                StopWaiting();
+                _fieldPrompt!.Cancel(); // the "go back" message has done its job
+                await DeliverAsync(current!, waiting.Text, waiting.CaretOffset, waiting.FromMenu, waiting.SendEnter).ConfigureAwait(false);
+                return;
+            }
+
+            var miss = MissOf(waiting.Target, current);
+            if (!clicked || miss is FieldReturnMiss.NoTarget or FieldReturnMiss.OtherWindow
+                || TimeProvider.System.GetElapsedTime(started) >= ClickRecheckTimeout)
+            {
+                if (clicked)
+                {
+                    Record(new FieldsClickMissed(Now, miss));
+                }
+
+                return;
+            }
+
+            // Real time on purpose, as in ReturnToAsync: the page moves its focus on its own schedule.
+            await Task.Delay(FocusReturnPoll, TimeProvider.System, _stopping).ConfigureAwait(false);
         }
     }
 
@@ -214,12 +244,15 @@ public sealed partial class ExpansionEngine
     }
 
     /// <summary>Brings the original window back and waits until its original field has the focus again.</summary>
-    /// <returns>The target once it is back (null if not), and whether TextFlow had put the focus back itself.</returns>
-    private async Task<(ActiveTarget? Target, bool Restored)> ReturnToAsync(ActiveTarget original)
+    /// <returns>
+    /// The target once it is back (null if not), whether TextFlow had put the focus back itself, and what the last
+    /// check saw instead.
+    /// </returns>
+    private async Task<(ActiveTarget? Target, bool Restored, FieldReturnMiss Miss)> ReturnToAsync(ActiveTarget original)
     {
         if (!_resolver.Activate(original))
         {
-            return (null, false);
+            return (null, false, FieldReturnMiss.OtherWindow);
         }
 
         var started = TimeProvider.System.GetTimestamp();
@@ -228,10 +261,10 @@ public sealed partial class ExpansionEngine
         var restored = false;
         while (true)
         {
-            var current = await CaptureTargetAsync().ConfigureAwait(false);
+            var current = await CaptureFieldAsync().ConfigureAwait(false);
             if (IsSameField(original, current))
             {
-                return (current, restored);
+                return (current, restored, FieldReturnMiss.None);
             }
 
             if (!tried && IsSameWindowOtherField(original, current))
@@ -252,7 +285,10 @@ public sealed partial class ExpansionEngine
 
             if (TimeProvider.System.GetElapsedTime(started) >= timeout)
             {
-                return (null, restored);
+                var miss = MissOf(original, current);
+                // TextFlow focused that very field and nothing says otherwise: the page only could not tell which
+                // element has the focus in time (a busy page), so the text goes in instead of waiting for a click.
+                return restored && miss == FieldReturnMiss.ElementUnknown ? (current, restored, miss) : (null, restored, miss);
             }
 
             // Real time on purpose: Windows moves the focus back on its own schedule, not the engine's clock.
@@ -264,6 +300,11 @@ public sealed partial class ExpansionEngine
 
     private static readonly TimeSpan RestoredFocusTimeout = TimeSpan.FromSeconds(1);
 
+    private static readonly TimeSpan ClickRecheckTimeout = TimeSpan.FromMilliseconds(600);
+
+    /// <summary>The patient field inspector answers within about 0.8 s; past this the target counts as missing.</summary>
+    private static readonly TimeSpan PatientCaptureTimeout = TimeSpan.FromMilliseconds(1500);
+
     private static readonly TimeSpan BookmarkSettle = TimeSpan.FromMilliseconds(60);
 
     private static bool IsSameWindowOtherField(ActiveTarget original, ActiveTarget? current) =>
@@ -272,13 +313,39 @@ public sealed partial class ExpansionEngine
         && current.ProcessId == original.ProcessId
         && original.Control.ElementId is not null;
 
+    /// <summary>The focused control as the field checks see it: no caret lookup, more time for UI Automation.</summary>
+    private async Task<ActiveTarget?> CaptureFieldAsync()
+    {
+        try
+        {
+            return await Task.Run(_resolver.CaptureTargetPatiently, _stopping)
+                .WaitAsync(PatientCaptureTimeout, _time, _stopping)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A writable, non-password text box in the original window and control (web chat boxes are "Edit").</summary>
+    private static bool IsTextBoxOfSameWindow(ActiveTarget original, ActiveTarget? current) =>
+        MissOf(original, current) is FieldReturnMiss.OtherElement
+        && current!.Control is { ControlType: "Edit", IsPassword: false, IsReadOnly: false };
+
+    private static FieldReturnMiss MissOf(ActiveTarget original, ActiveTarget? current) => current switch
+    {
+        null => FieldReturnMiss.NoTarget,
+        _ when current.WindowHandle != original.WindowHandle || current.ProcessId != original.ProcessId => FieldReturnMiss.OtherWindow,
+        _ when original.FocusHandle != 0 && current.FocusHandle != original.FocusHandle => FieldReturnMiss.OtherControl,
+        _ when original.Control.ElementId is null || current.Control.ElementId == original.Control.ElementId => FieldReturnMiss.None,
+        _ when current.Control.ElementId is null => FieldReturnMiss.ElementUnknown,
+        _ => FieldReturnMiss.OtherElement,
+    };
+
     /// <summary>Same window, control and (when known) UI Automation element: browser tabs share one window.</summary>
     private static bool IsSameField(ActiveTarget original, ActiveTarget? current) =>
-        current is not null
-        && current.WindowHandle == original.WindowHandle
-        && current.ProcessId == original.ProcessId
-        && (original.FocusHandle == 0 || current.FocusHandle == original.FocusHandle)
-        && (original.Control.ElementId is null || current.Control.ElementId == original.Control.ElementId);
+        MissOf(original, current) == FieldReturnMiss.None;
 
     /// <summary>Hides an open prompt without inserting (another template, pause, shutdown).</summary>
     private void CancelFields(FieldsCloseReason reason)

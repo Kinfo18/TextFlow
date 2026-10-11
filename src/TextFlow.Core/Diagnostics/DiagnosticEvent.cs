@@ -35,8 +35,13 @@ public sealed record FieldsShown(DateTimeOffset At, [property: SafeToLog] string
 /// <summary>
 /// The values are in but the original field did not get the focus back: the prompt now waits for the user to return.
 /// <paramref name="FocusRestored"/>: TextFlow had put the focus back in that field itself (value copied from the same page).
+/// <paramref name="Miss"/>: what the last check saw instead of the original field.
 /// </summary>
-public sealed record FieldsWaiting(DateTimeOffset At, bool FocusRestored) : DiagnosticEvent(At);
+public sealed record FieldsWaiting(DateTimeOffset At, bool FocusRestored, FieldReturnMiss Miss = FieldReturnMiss.None)
+    : DiagnosticEvent(At);
+
+/// <summary>While filled-in fields waited, a click did not land back in the original field (<paramref name="Miss"/> says why).</summary>
+public sealed record FieldsClickMissed(DateTimeOffset At, FieldReturnMiss Miss) : DiagnosticEvent(At);
 
 public sealed record FieldsClosed(DateTimeOffset At, FieldsCloseReason Reason) : DiagnosticEvent(At);
 
@@ -68,6 +73,21 @@ public enum FieldsCloseReason
     TargetLost,
     /// <summary>Another template took over, or TextFlow was paused or stopped.</summary>
     Replaced,
+}
+
+/// <summary>Why a focus check did not find the field a template was typed in.</summary>
+public enum FieldReturnMiss
+{
+    None,
+    /// <summary>Nothing captured: no foreground window, or UI Automation did not answer in time at all.</summary>
+    NoTarget,
+    OtherWindow,
+    /// <summary>Same window, another Win32 control has the focus.</summary>
+    OtherControl,
+    /// <summary>Same window and control, but UI Automation could not say which element has the focus.</summary>
+    ElementUnknown,
+    /// <summary>Same window and control, another element (another field of the page, or the page itself).</summary>
+    OtherElement,
 }
 
 public enum MenuCloseReason

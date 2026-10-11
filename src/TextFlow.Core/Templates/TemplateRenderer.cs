@@ -57,7 +57,7 @@ public static class TemplateRenderer
     {
         BuiltinVariable.Date => source.Now.ToString(variable.Argument ?? culture.DateTimeFormat.ShortDatePattern, culture),
         BuiltinVariable.Time => source.Now.ToString(variable.Argument ?? DefaultTimeFormat, culture),
-        BuiltinVariable.Clipboard => source.GetClipboardText() ?? string.Empty,
+        BuiltinVariable.Clipboard => CopiedText.Clean(source.GetClipboardText() ?? string.Empty),
         BuiltinVariable.Selection => source.GetSelectionText() ?? string.Empty,
         _ => string.Empty,
     };

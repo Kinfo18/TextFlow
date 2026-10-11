@@ -34,6 +34,8 @@ public sealed class EngineHost : IAsyncDisposable
 
     private static readonly string SelfProcess = Path.GetFileName(Environment.ProcessPath) ?? "TextFlow.exe";
 
+    private static readonly TimeSpan FieldInspectorTimeout = TimeSpan.FromMilliseconds(800);
+
     public EngineHost(AppSettings settings, IMenuPresenter menu, IFieldPrompt fieldPrompt, IDiagnosticSink sink, IUsageRecorder? usage = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -41,7 +43,10 @@ public sealed class EngineHost : IAsyncDisposable
         var chimeVolume = settings.ChimeVolume;
         _sink = sink;
         _sound = new ExpansionSound(chimeVolume) { Enabled = soundEnabled };
-        var resolver = new Win32TargetResolver(new UiaFocusedControlInspector());
+        // Template fields get a patient inspector: a busy web page may take longer than a typing-time check allows to
+        // say which element has the focus, and the user waits on that answer to get the text (2026-10-11).
+        var resolver = new Win32TargetResolver(
+            new UiaFocusedControlInspector(), fieldInspector: new UiaFocusedControlInspector(FieldInspectorTimeout));
         _clipboard = new ClipboardStrategy();
         _hook = new KeyboardHook(new TriggerMatcher([], TriggerOptions.Default));
         _engine = new ExpansionEngine(

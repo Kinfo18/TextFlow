@@ -155,7 +155,7 @@ public sealed partial class ExpansionEngine
 
         CancelMenu(reason: null);
         DisposePendingTimer();
-        var (target, _) = await ReturnToAsync(chosen.Target).ConfigureAwait(false);
+        var (target, _, _) = await ReturnToAsync(chosen.Target).ConfigureAwait(false);
         if (target is null)
         {
             Record(new TargetRejected(Now, chosen.Target.ProcessName, RejectionReason.WindowChanged));
@@ -291,7 +291,7 @@ public sealed partial class ExpansionEngine
         MenuKeyPressed key when _open is not null => SendToMenu(key.Input),
         MenuInterrupted interrupted when _open is not null => InterruptMenu(interrupted),
         ForegroundChanged or FocusChanged when _waiting is not null => FocusMovedWhileWaitingAsync((HookEvent)work),
-        PointerReleased when _waiting is not null => DeliverIfBackAsync(),
+        PointerReleased when _waiting is not null => DeliverIfBackAsync(clicked: true),
         ForegroundChanged => HandleForegroundChangedAsync(),
         FocusChanged { KnownField: true } when _open is null => RecheckKnownFieldAsync(),
         FocusChanged when _open is null => RefreshCaptureUnlessSupersededAsync(),

@@ -22,17 +22,26 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
     private const int MaxPathLength = 1024;
 
     private readonly IFocusedControlInspector _controlInspector;
+    private readonly IFocusedControlInspector _fieldInspector;
     private readonly TimeProvider _time;
 
-    public Win32TargetResolver(IFocusedControlInspector controlInspector, TimeProvider? time = null)
+    /// <param name="fieldInspector">Slower, more patient inspector for template fields (bookmark, restore, return
+    /// checks); defaults to <paramref name="controlInspector"/>.</param>
+    public Win32TargetResolver(
+        IFocusedControlInspector controlInspector, TimeProvider? time = null, IFocusedControlInspector? fieldInspector = null)
     {
         _controlInspector = controlInspector;
+        _fieldInspector = fieldInspector ?? controlInspector;
         _time = time ?? TimeProvider.System;
     }
 
     public ActiveTarget? CaptureTarget() => CaptureTarget(locateCaret: true);
 
-    public ActiveTarget? CaptureTarget(bool locateCaret)
+    public ActiveTarget? CaptureTarget(bool locateCaret) => Capture(_controlInspector, locateCaret);
+
+    public ActiveTarget? CaptureTargetPatiently() => Capture(_fieldInspector, locateCaret: false);
+
+    private ActiveTarget? Capture(IFocusedControlInspector inspector, bool locateCaret)
     {
         var foreground = PInvoke.GetForegroundWindow();
         if (foreground.IsNull)
@@ -54,10 +63,10 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         // The security policy excludes TextFlow itself, so nothing is captured there anyway.
         var control = processId == (uint)Environment.ProcessId
             ? FocusedControlInfo.Unknown
-            : _controlInspector.Inspect(processId) ?? FocusedControlInfo.Unknown;
+            : inspector.Inspect(processId) ?? FocusedControlInfo.Unknown;
         if (caret is null && locateCaret && processId != (uint)Environment.ProcessId)
         {
-            caret = _controlInspector.LocateCaret(processId); // Chrome & co. draw their own caret (H4.4)
+            caret = inspector.LocateCaret(processId); // Chrome & co. draw their own caret (H4.4)
         }
 
         return new ActiveTarget(
@@ -119,7 +128,7 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         ArgumentNullException.ThrowIfNull(target);
         if (target.Control.ElementId is { } elementId && target.ProcessId != Environment.ProcessId)
         {
-            _controlInspector.Bookmark((uint)target.ProcessId, elementId);
+            _fieldInspector.Bookmark((uint)target.ProcessId, elementId);
         }
     }
 
@@ -128,7 +137,7 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
         ArgumentNullException.ThrowIfNull(target);
         return target.Control.ElementId is { } elementId
             && target.ProcessId != Environment.ProcessId
-            && _controlInspector.Restore((uint)target.ProcessId, elementId);
+            && _fieldInspector.Restore((uint)target.ProcessId, elementId);
     }
 
     public TargetValidation ValidateTarget(ActiveTarget target)

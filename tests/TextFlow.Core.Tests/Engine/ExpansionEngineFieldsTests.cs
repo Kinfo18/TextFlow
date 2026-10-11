@@ -272,6 +272,108 @@ public sealed partial class ExpansionEngineTests
         Assert.Contains(_sink.Events, e => e is FieldsClosed { Reason: FieldsCloseReason.Inserted });
     }
 
+    private static ActiveTarget InTextBox(string elementId) =>
+        InField(elementId) with { Control = InField(elementId).Control with { ControlType = "Edit" } };
+
+    /// <summary>Copies the name from the same page; TextFlow cannot give the focus back, so the text waits.</summary>
+    private async Task<ActiveTarget> WaitAfterSamePageCopyAsync(string originalId = "chat-box")
+    {
+        _resolver.Target = InTextBox(originalId);
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        var original = _resolver.Target;
+        _resolver.Target = InField("customer-name");
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+        Assert.Equal(1, _fields.WaitingShown);
+        return original;
+    }
+
+    [Fact]
+    public async Task WhileWaiting_AClickInAChatBoxThePageRebuilt_InsertsTheText()
+    {
+        await WaitAfterSamePageCopyAsync();
+
+        _resolver.Target = InTextBox("chat-box-rebuilt"); // same box for the user, a new element for UI Automation
+        await TypeAsync(new PointerReleased());
+
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+        Assert.Contains(_sink.Events, e => e is FieldsClosed { Reason: FieldsCloseReason.Inserted });
+    }
+
+    [Fact]
+    public async Task WhileWaiting_AClickWhoseFocusShowsLate_InsertsTheText()
+    {
+        var original = await WaitAfterSamePageCopyAsync();
+        var clickChecks = 0;
+        _resolver.DuringCapture = () =>
+        {
+            if (++clickChecks == 3)
+            {
+                _resolver.Target = original; // the page reports the clicked field a moment after the click
+            }
+        };
+
+        await TypeAsync(new PointerReleased());
+
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+    }
+
+    [Fact]
+    public async Task WhileWaiting_AClickOnTheRestOfThePage_KeepsWaiting_AndLogsWhy()
+    {
+        await WaitAfterSamePageCopyAsync();
+
+        await TypeAsync(new PointerReleased()); // still on the customer name, which is no text box
+
+        Assert.Single(_insertion.Requests); // only the trigger removal
+        Assert.Equal(0, _fields.Cancels);
+        Assert.Contains(_sink.Events, e => e is FieldsWaiting { Miss: FieldReturnMiss.OtherElement });
+        Assert.Contains(_sink.Events, e => e is FieldsClickMissed { Miss: FieldReturnMiss.OtherElement });
+    }
+
+    [Fact]
+    public async Task WhileWaiting_AClickInAPasswordBox_DoesNotInsert()
+    {
+        await WaitAfterSamePageCopyAsync();
+
+        _resolver.Target = InTextBox("pin") with { Control = InTextBox("pin").Control with { IsPassword = true } };
+        await TypeAsync(new PointerReleased());
+
+        Assert.Single(_insertion.Requests);
+    }
+
+    [Fact]
+    public async Task WhileWaiting_AFocusMoveToAnotherTextBox_DoesNotInsert()
+    {
+        await WaitAfterSamePageCopyAsync();
+
+        _resolver.Target = InTextBox("search-box"); // tabbed or scripted there: only a click counts as going back
+        await TypeAsync(new FocusChanged(FakeResolver.Window));
+
+        Assert.Single(_insertion.Requests);
+    }
+
+    [Fact]
+    public async Task RestoredFocus_ThatThePageCannotConfirm_IsInsertedWithoutWaiting()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        _resolver.Target = InField("customer-name");
+        _resolver.OnRestore = _ =>
+        {
+            _resolver.Target = InField("chat-box") with { Control = FocusedControlInfo.Unknown }; // UIA gave no answer
+            return true;
+        };
+
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+
+        Assert.Equal(0, _fields.WaitingShown);
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+    }
+
     [Fact]
     public async Task AClick_WithNothingWaiting_DoesNothing()
     {
