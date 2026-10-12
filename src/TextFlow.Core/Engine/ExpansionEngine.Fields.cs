@@ -328,15 +328,20 @@ public sealed partial class ExpansionEngine
         }
     }
 
-    /// <summary>A writable, non-password text box in the original window and control (web chat boxes are "Edit").</summary>
+    /// <summary>
+    /// A writable, non-password text box in the original window (web chat boxes are "Edit"). Any control of that
+    /// window: Chrome's Win32 focus handle can stay on another control after a click in the page (2026-10-12).
+    /// </summary>
     private static bool IsTextBoxOfSameWindow(ActiveTarget original, ActiveTarget? current) =>
-        MissOf(original, current) is FieldReturnMiss.OtherElement
+        MissOf(original, current) is FieldReturnMiss.OtherElement or FieldReturnMiss.OtherControl
         && current!.Control is { ControlType: "Edit", IsPassword: false, IsReadOnly: false };
 
     private static FieldReturnMiss MissOf(ActiveTarget original, ActiveTarget? current) => current switch
     {
         null => FieldReturnMiss.NoTarget,
         _ when current.WindowHandle != original.WindowHandle || current.ProcessId != original.ProcessId => FieldReturnMiss.OtherWindow,
+        // UI Automation naming the very element wins over the Win32 focus handle, which browsers update late.
+        _ when original.Control.ElementId is { } id && current.Control.ElementId == id => FieldReturnMiss.None,
         _ when original.FocusHandle != 0 && current.FocusHandle != original.FocusHandle => FieldReturnMiss.OtherControl,
         _ when original.Control.ElementId is null || current.Control.ElementId == original.Control.ElementId => FieldReturnMiss.None,
         _ when current.Control.ElementId is null => FieldReturnMiss.ElementUnknown,

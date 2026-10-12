@@ -333,6 +333,41 @@ public sealed partial class ExpansionEngineTests
     }
 
     [Fact]
+    public async Task WhileWaiting_AClickInTheChatBox_InsertsTheText_EvenIfWindowsNamesAnotherFocusedControl()
+    {
+        var original = await WaitAfterSamePageCopyAsync();
+
+        // 2026-10-12 (work PC, Chrome): every click in the chat logged "OtherControl", the browser's Win32 focus
+        // handle lagged behind the element UI Automation reported.
+        _resolver.Target = InTextBox("chat-box") with { FocusHandle = original.FocusHandle + 1 };
+        await TypeAsync(new PointerReleased());
+
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+        Assert.Contains(_sink.Events, e => e is FieldsClosed { Reason: FieldsCloseReason.Inserted });
+    }
+
+    [Fact]
+    public async Task RestoredFocus_OnTheSameElement_UnderAnotherWin32Control_IsInsertedWithoutWaiting()
+    {
+        _resolver.Target = InField("chat-box");
+        await StartAsync();
+        await TypeAsync(new TriggerTyped(Match("s1"), FakeResolver.Window));
+        var original = _resolver.Target;
+        _resolver.Target = InField("customer-name");
+        _resolver.OnRestore = _ =>
+        {
+            _resolver.Target = original with { FocusHandle = original.FocusHandle + 1 };
+            return true;
+        };
+
+        _fields.Finish(Values(("cliente", "Ana")));
+        await SettleAsync();
+
+        Assert.Equal(0, _fields.WaitingShown);
+        Assert.Equal("Hola, Ana ¡un gusto!", _insertion.Requests[^1].Text);
+    }
+
+    [Fact]
     public async Task WhileWaiting_AClickInAPasswordBox_DoesNotInsert()
     {
         await WaitAfterSamePageCopyAsync();
