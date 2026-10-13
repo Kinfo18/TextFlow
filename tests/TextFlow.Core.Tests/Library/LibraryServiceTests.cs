@@ -119,6 +119,9 @@ public sealed class LibraryServiceTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task MoveSnippetsAsync(IReadOnlyList<string> snippetIds, string groupId, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public Task DeleteSnippetAsync(string snippetId, CancellationToken ct) => throw new NotSupportedException();
 
         public Task ReorderGroupsAsync(string parentId, IReadOnlyList<string> childIds, CancellationToken ct)

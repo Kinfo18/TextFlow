@@ -28,6 +28,12 @@ public interface ILibraryRepository
     /// <summary>Creates or updates a snippet (content, abbreviations, mode, enabled) inside <paramref name="groupId"/>.</summary>
     Task SaveSnippetAsync(string groupId, LibrarySnippet snippet, CancellationToken ct);
 
+    /// <summary>
+    /// Moves snippets into <paramref name="groupId"/>, last and in the given order; one already there keeps its place.
+    /// Nothing changes if any id or the group is unknown.
+    /// </summary>
+    Task MoveSnippetsAsync(IReadOnlyList<string> snippetIds, string groupId, CancellationToken ct);
+
     Task DeleteSnippetAsync(string snippetId, CancellationToken ct);
 }
 

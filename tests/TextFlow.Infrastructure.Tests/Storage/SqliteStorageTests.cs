@@ -143,6 +143,62 @@ public sealed class SqliteStorageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MoveSnippets_PutsThemLastInTheTarget_InTheGivenOrder_KeepingTheirContent()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await library.MoveSnippetsAsync(["s-sig", "s-cc"], "g-lc", CancellationToken.None);
+
+        var root = await library.LoadAsync(CancellationToken.None);
+        var local = root.Groups.Single(g => g.Id == "g-lc");
+        Assert.Equal(["s-nc", "s-sig", "s-cc"], local.Snippets.Select(s => s.Id));
+        Assert.Empty(root.Groups.Single(g => g.Id == "g-t").Snippets);
+        Assert.Equal("texto cc", local.Snippets[2].Content);
+        Assert.Equal(["cc"], local.Snippets[2].Abbreviations);
+        Assert.True(local.Snippets[2].SendEnter);
+        Assert.False(local.Snippets[1].Enabled);
+    }
+
+    [Fact]
+    public async Task MoveSnippets_IntoTheirOwnGroup_KeepsThePosition()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await library.MoveSnippetsAsync(["s-cc"], "g-t", CancellationToken.None);
+
+        var temples = (await library.LoadAsync(CancellationToken.None)).Groups.Single(g => g.Id == "g-t");
+        Assert.Equal(["s-cc", "s-sig"], temples.Snippets.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task MoveSnippets_WithAnUnknownSnippet_ChangesNothing()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            library.MoveSnippetsAsync(["s-cc", "no-such-snippet"], "g-lc", CancellationToken.None));
+
+        var root = await library.LoadAsync(CancellationToken.None);
+        Assert.Equal(["s-cc", "s-sig"], root.Groups.Single(g => g.Id == "g-t").Snippets.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task MoveSnippets_IntoAMissingGroup_ChangesNothing()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            library.MoveSnippetsAsync(["s-cc"], "no-such-group", CancellationToken.None));
+
+        var root = await library.LoadAsync(CancellationToken.None);
+        Assert.Equal(["s-cc", "s-sig"], root.Groups.Single(g => g.Id == "g-t").Snippets.Select(s => s.Id));
+    }
+
+    [Fact]
     public async Task SaveSnippet_IntoAMissingGroup_Fails()
     {
         await Assert.ThrowsAsync<SqliteException>(() =>
