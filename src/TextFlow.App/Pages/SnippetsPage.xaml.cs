@@ -45,12 +45,15 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         var expanded = _groups.Where(pair => pair.Key.IsExpanded).Select(pair => pair.Value.Id).ToHashSet(StringComparer.Ordinal);
         GroupTree.RootNodes.Clear();
         _groups.Clear();
+        _rows.Clear();
+        _marked = null;
 
         UpdateBlankHint();
         var rootNode = Node(Library, expanded, isRoot: true);
         GroupTree.RootNodes.Add(rootNode);
         var selected = _groups.FirstOrDefault(pair => pair.Value.Id == _selectedGroupId).Key ?? rootNode;
         GroupTree.SelectedNode = selected;
+        MarkGroup(_groups[selected].Id);
 
         if (UnusedToggle.IsChecked == true)
         {
@@ -68,8 +71,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
     private TreeViewNode Node(LibraryGroup group, HashSet<string> expanded, bool isRoot = false)
     {
-        var label = isRoot ? group.Name : group.Abbreviation is { } abbreviation ? $"{group.Name}   ·  {abbreviation}" : group.Name;
-        var node = new TreeViewNode { Content = label, IsExpanded = isRoot || expanded.Contains(group.Id) };
+        var node = new TreeViewNode { Content = GroupRowContent(group, isRoot), IsExpanded = isRoot || expanded.Contains(group.Id) };
         _groups[node] = group;
         foreach (var child in group.Groups)
         {
@@ -110,7 +112,15 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         DeleteGroupItem.IsEnabled = !isRoot;
         GroupButton.IsEnabled = true;
         ListTitle.Text = group.Name;
+        ShowBreadcrumb(group);
+        MarkGroup(group.Id);
         var count = group.Snippets.Count == 1 ? "1 comando" : $"{group.Snippets.Count} comandos";
+        var below = Count(group).Commands - group.Snippets.Count;
+        if (below > 0)
+        {
+            count += $" aquí · {below} en sus subgrupos";
+        }
+
         ListSubtitle.Text = group.Abbreviation is { } abbreviation ? $"{count} · se abre con {abbreviation}" : count;
         NewSnippetButton.IsEnabled = true;
         Fill(group.Snippets.Select(s => (s, group.Id, (string?)null)));
@@ -120,6 +130,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     {
         var hits = LibrarySearch.Find(Library, query);
         ListTitle.Text = "Resultados";
+        ShowPlainTitle();
         ListSubtitle.Text = hits.Count switch
         {
             0 => "Nada coincide con la búsqueda",
@@ -186,7 +197,11 @@ public sealed partial class SnippetsPage : Page, IRefreshable
             title.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = $"   {snippet.Name}" });
         }
 
-        var secondLine = new TextBlock { Text = path ?? Preview(snippet), Opacity = 0.65, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        var secondLine = new TextBlock { Text = path is null ? Preview(snippet) : ShortPath(path), Opacity = 0.65, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        if (path is not null)
+        {
+            ToolTipService.SetToolTip(secondLine, path);
+        }
         var text = new StackPanel();
         text.Children.Add(title);
         text.Children.Add(secondLine);
@@ -211,6 +226,13 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         return item;
     }
 
+    /// <summary>Deep paths keep their last two levels (the group that matters); the full path is in the tooltip.</summary>
+    private static string ShortPath(string path)
+    {
+        var levels = path.Split(" › ");
+        return levels.Length <= 2 ? path : $"… › {levels[^2]} › {levels[^1]}";
+    }
+
     private static string Preview(LibrarySnippet snippet)
     {
         if (snippet.IsInfoOnly)
@@ -225,13 +247,25 @@ public sealed partial class SnippetsPage : Page, IRefreshable
     /// <remarks>async void: every failure is caught; an escaping exception freezes WinUI.</remarks>
     private async void OnSnippetSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (_revertingSelection || SnippetList.SelectedItem is not ListViewItem { Tag: ValueTuple<LibrarySnippet, string, string?> row })
+        if (_revertingSelection)
         {
             return;
         }
 
         try
         {
+            var selectedCount = SnippetList.SelectedItems.Count;
+            if (selectedCount != 1)
+            {
+                await ShowSelectionAsync(selectedCount);
+                return;
+            }
+
+            if (SnippetList.SelectedItem is not ListViewItem { Tag: ValueTuple<LibrarySnippet, string, string?> row })
+            {
+                return;
+            }
+
             if (row.Item1.Id != _draft?.Id && !await ConfirmLeaveAsync())
             {
                 ReselectCurrent();
@@ -240,11 +274,38 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
             _selectedSnippetId = row.Item1.Id;
             LoadEditor(SnippetDraft.From(row.Item1), row.Item2, row.Item3, isNew: false);
+            if (row.Item3 is not null)
+            {
+                RevealGroup(row.Item2); // a search result: show in the tree which group it lives in
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or Microsoft.Data.Sqlite.SqliteException)
         {
             Fail(ex);
         }
+    }
+
+    /// <summary>None or several commands selected (Ctrl/Shift+click): an empty editor, or the "move them" panel.</summary>
+    private async Task ShowSelectionAsync(int count)
+    {
+        if (count == 0)
+        {
+            if (MultiState.Visibility == Visibility.Visible)
+            {
+                ShowEmptyEditor();
+            }
+
+            return;
+        }
+
+        if (!await ConfirmLeaveAsync())
+        {
+            ReselectCurrent();
+            return;
+        }
+
+        _selectedSnippetId = null;
+        ShowMultiState(count);
     }
 
     private async void OnNewSnippet(object sender, RoutedEventArgs e)
@@ -290,6 +351,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
             EditorMessage.Text = string.Empty;
             DeleteButton.IsEnabled = !isNew;
             EmptyState.Visibility = Visibility.Collapsed;
+            MultiState.Visibility = Visibility.Collapsed;
             EditorScroll.Visibility = Visibility.Visible;
             EditorActions.Visibility = Visibility.Visible;
             SetDirty(false);
@@ -307,6 +369,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         _draft = null;
         _draftGroupId = null;
         EmptyState.Visibility = Visibility.Visible;
+        MultiState.Visibility = Visibility.Collapsed;
         EditorScroll.Visibility = Visibility.Collapsed;
         EditorActions.Visibility = Visibility.Collapsed;
         SetDirty(false);

@@ -7,8 +7,8 @@ namespace TextFlow.App.Pages;
 /// <summary>Snippets (C9): three columns when the window is wide, use counts per command and the "unused" filter.</summary>
 public sealed partial class SnippetsPage
 {
-    /// <summary>Below this page width the editor goes under the list again (groups 240 + list 260 + editor 340 + gaps).</summary>
-    private const double ThreeColumnWidth = 940;
+    /// <summary>Below this page width the editor goes under the list again (groups 270 + list 260 + editor 340 + gaps).</summary>
+    private const double ThreeColumnWidth = 970;
 
     private const int UnusedDays = 30;
 
@@ -27,7 +27,8 @@ public sealed partial class SnippetsPage
         _threeColumns = threeColumns;
         if (threeColumns)
         {
-            GroupColumn.MinWidth = 240;
+            GroupColumn.Width = new GridLength(3, GridUnitType.Star);
+            GroupColumn.MinWidth = 270;
             ListColumn.Width = new GridLength(3, GridUnitType.Star);
             ListColumn.MinWidth = 260;
             EditorColumn.Width = new GridLength(4, GridUnitType.Star);
@@ -41,7 +42,8 @@ public sealed partial class SnippetsPage
         }
         else
         {
-            GroupColumn.MinWidth = 200;
+            GroupColumn.Width = new GridLength(2, GridUnitType.Star);
+            GroupColumn.MinWidth = 220;
             ListColumn.Width = new GridLength(5, GridUnitType.Star);
             ListColumn.MinWidth = 320;
             EditorColumn.Width = new GridLength(0);
@@ -96,6 +98,7 @@ public sealed partial class SnippetsPage
         var unused = UsageReport.Unused(Library, _usage, DateTimeOffset.UtcNow, UnusedDays).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         var rows = WithPaths(Library, []).Where(row => unused.Contains(row.Snippet.Id)).ToList();
         ListTitle.Text = $"Sin usar en {UnusedDays} días";
+        ShowPlainTitle();
         ListSubtitle.Text = (rows.Count switch
         {
             0 => "Has usado todos tus comandos últimamente",

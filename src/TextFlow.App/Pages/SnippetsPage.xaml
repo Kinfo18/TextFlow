@@ -37,12 +37,20 @@
         </Grid.ColumnDefinitions>
 
         <!-- Hand-filled XXX blanks can become template fields (H5.2) -->
-        <InfoBar x:Name="BlankHint" Grid.ColumnSpan="3" IsOpen="False" Severity="Informational" IsClosable="True"
-                 Message="Conviértelos en campos: al expandir, se rellenan solos con lo que copies.">
-            <InfoBar.ActionButton>
-                <Button Content="Convertir…" Click="OnConvertBlanks" />
-            </InfoBar.ActionButton>
-        </InfoBar>
+        <StackPanel Grid.ColumnSpan="3" Spacing="8">
+            <InfoBar x:Name="BlankHint" IsOpen="False" Severity="Informational" IsClosable="True"
+                     Message="Conviértelos en campos: al expandir, se rellenan solos con lo que copies.">
+                <InfoBar.ActionButton>
+                    <Button Content="Convertir…" Click="OnConvertBlanks" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <!-- After "Mover a": where the commands went, with a jump there -->
+            <InfoBar x:Name="MoveNotice" IsOpen="False" Severity="Success" IsClosable="True">
+                <InfoBar.ActionButton>
+                    <Button Content="Ir al grupo" Click="OnNoticeGoToGroup" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
 
         <!-- Groups -->
         <Grid Grid.Row="1" Grid.RowSpan="2" RowSpacing="10">
@@ -62,13 +70,32 @@
                 </ToggleButton>
             </StackPanel>
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
-                <!-- Horizontal only: long names and deep subgroups scroll sideways; the tree keeps its own vertical scroll. -->
-                <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
-                    <TreeView x:Name="GroupTree" SelectionMode="Single" CanDragItems="True" AllowDrop="True" CanReorderItems="True"
-                              ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" ContextRequested="OnTreeContextRequested" />
-                </ScrollViewer>
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4,8,4,4">
+                <Grid RowSpacing="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Padding="12,0,14,0">
+                        <TextBlock Text="Grupos" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" />
+                        <TextBlock Text="Comandos" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" HorizontalAlignment="Right" />
+                    </Grid>
+                    <!-- Each row: folder, name, the abbreviation that opens its menu and its command count (SnippetsPage.Groups.cs) -->
+                    <TreeView x:Name="GroupTree" Grid.Row="1" SelectionMode="Single" CanDragItems="True" AllowDrop="True" CanReorderItems="True"
+                              ItemInvoked="OnGroupInvoked" DragItemsCompleted="OnGroupDragged" ContextRequested="OnTreeContextRequested">
+                        <TreeView.ItemTemplate>
+                            <!-- Node.Content is the row built in code -->
+                            <DataTemplate>
+                                <ContentPresenter Content="{Binding Content}" HorizontalAlignment="Stretch" />
+                            </DataTemplate>
+                        </TreeView.ItemTemplate>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
+                </Grid>
             </Border>
         </Grid>
 
@@ -78,16 +105,20 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Grid Padding="4,6,4,0" ColumnSpacing="8">
+            <Grid Padding="4,6,4,0" ColumnSpacing="8" RowSpacing="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock x:Name="ListTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Name="ListSubtitle" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <!-- Where you are, on its own line so deep paths fit: click a level to go up -->
+                <BreadcrumbBar x:Name="GroupCrumbs" Grid.ColumnSpan="2" ItemClicked="OnCrumbClicked" />
+                <TextBlock x:Name="ListTitle" Grid.ColumnSpan="2" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+                <TextBlock x:Name="ListSubtitle" Grid.Row="1" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button x:Name="NewSnippetButton" AutomationProperties.Name="Nuevo comando" Click="OnNewSnippet" ToolTipService.ToolTip="Nuevo comando en este grupo">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE710;" FontSize="12" />
@@ -100,7 +131,8 @@
             </Grid>
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
-                <ListView x:Name="SnippetList" SelectionMode="Single" SelectionChanged="OnSnippetSelected" />
+                <ListView x:Name="SnippetList" SelectionMode="Extended" SelectionChanged="OnSnippetSelected"
+                          ContextRequested="OnListContextRequested" />
             </Border>
         </Grid>
 
@@ -117,14 +149,48 @@
                     <TextBlock Text="Elige un comando" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock Text="Selecciona un grupo a la izquierda o busca por abreviatura, nombre o texto. Con «Nuevo» creas un comando en el grupo elegido."
                                TextWrapping="Wrap" Opacity="0.7" />
+                    <TextBlock Text="Para mover varios a otro grupo, elígelos con Ctrl+clic (o Mayús+clic) o usa el clic derecho."
+                               TextWrapping="Wrap" Opacity="0.7" />
+                </StackPanel>
+
+                <!-- Several commands selected: the only thing to do with them together is move them -->
+                <StackPanel x:Name="MultiState" Padding="20" Spacing="10" Visibility="Collapsed">
+                    <TextBlock x:Name="MultiTitle" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Se moverán juntos, en el orden de la lista, al final del grupo que elijas." TextWrapping="Wrap" Opacity="0.7" />
+                    <DropDownButton HorizontalAlignment="Left" AutomationProperties.Name="Mover los comandos seleccionados a otro grupo">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8DE;" FontSize="12" />
+                            <TextBlock Text="Mover a" />
+                        </StackPanel>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout x:Name="MultiMoveFlyout" Placement="BottomEdgeAlignedLeft" Opening="OnMultiMoveOpening" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
                 </StackPanel>
 
                 <ScrollViewer x:Name="EditorScroll" Visibility="Collapsed" Padding="20,16,20,8">
                     <StackPanel Spacing="14">
-                        <StackPanel>
-                            <TextBlock x:Name="DetailTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
-                            <TextBlock x:Name="DetailPath" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
-                        </StackPanel>
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="DetailTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="DetailPath" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <!-- Next to the group it is in: move it elsewhere -->
+                            <DropDownButton x:Name="EditorMoveButton" Grid.Column="1" VerticalAlignment="Top"
+                                            AutomationProperties.Name="Mover el comando a otro grupo" ToolTipService.ToolTip="Mover este comando a otro grupo">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE8DE;" FontSize="12" />
+                                    <TextBlock Text="Mover a" />
+                                </StackPanel>
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout x:Name="EditorMoveFlyout" Placement="BottomEdgeAlignedRight" Opening="OnEditorMoveOpening" />
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
+                        </Grid>
                         <StackPanel Spacing="6">
                             <TextBox x:Name="AbbreviationsBox" Header="Abreviaturas (una por línea)" AcceptsReturn="True" TextWrapping="Wrap"
                                      MinHeight="60" TextChanged="OnEdited" />
