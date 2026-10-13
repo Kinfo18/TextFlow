@@ -78,6 +78,8 @@ public partial class App : Application, IDisposable
 
     internal AppTheme Theme => _settings.Theme;
 
+    internal WindowPlacement? WindowPlacement => _settings.Window;
+
     internal bool SoundEnabled => _settings.SoundEnabled;
 
     internal double ChimeVolume => _settings.ChimeVolume;
@@ -494,6 +496,16 @@ public partial class App : Application, IDisposable
         }
     }
 
+    /// <summary>The next time the window opens it comes back to this place (saved only when it changed).</summary>
+    private void RememberWindow(MainWindow window)
+    {
+        if (window.Placement is { } placement && placement != _settings.Window)
+        {
+            _settings = _settings with { Window = placement };
+            SaveSettings();
+        }
+    }
+
     private void ToggleStartWithWindows() => SetStartWithWindows(!_settings.StartWithWindows);
 
     private void OnTrayCommand(TrayCommand command)
@@ -559,6 +571,7 @@ public partial class App : Application, IDisposable
         {
             if (await window.ConfirmCloseAsync())
             {
+                RememberWindow(window); // a programmatic Close() raises no second Closing
                 window.Close();
             }
         }
@@ -593,7 +606,12 @@ public partial class App : Application, IDisposable
                 await _library.DisposeAsync();
             }
 
-            _window?.Close();
+            if (_window is { } open)
+            {
+                RememberWindow(open);
+                open.Close();
+            }
+
             await _host.StopAsync();
         }
         catch (Exception ex)

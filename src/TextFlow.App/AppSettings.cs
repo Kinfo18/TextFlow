@@ -16,6 +16,7 @@ namespace TextFlow.App;
 /// <param name="PauseHotkey">Global pause/resume shortcut, e.g. "Ctrl+Shift+Alt+P" (H1.4); null or invalid uses the default.</param>
 /// <param name="Theme">Window theme (H3.1).</param>
 /// <param name="PaletteHotkey">Command palette shortcut (D11), e.g. "Ctrl+Shift+Alt+Space"; null or invalid uses the default.</param>
+/// <param name="Window">Where the main window was when it last closed; null opens it at the default size.</param>
 public sealed record AppSettings(
     string? ATextBackupPath = null,
     double ChimeVolume = 1.0,
@@ -25,7 +26,8 @@ public sealed record AppSettings(
     bool SoundEnabled = true,
     int PrefixTimeoutMs = 600,
     IReadOnlyList<string>? ExcludedProcesses = null,
-    string? PaletteHotkey = null)
+    string? PaletteHotkey = null,
+    WindowPlacement? Window = null)
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 
@@ -53,6 +55,9 @@ public sealed record AppSettings(
         File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
     }
 }
+
+/// <summary>The main window's last place in physical pixels: its restored (not maximized) bounds, and whether it was maximized.</summary>
+public sealed record WindowPlacement(int X, int Y, int Width, int Height, bool Maximized);
 
 /// <summary>Order matches the radio buttons in Configuración.</summary>
 public enum AppTheme

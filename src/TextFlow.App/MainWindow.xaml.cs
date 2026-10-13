@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TextFlow.App.Pages;
+using TextFlow.Core.Windowing;
 using Windows.Graphics;
 
 namespace TextFlow.App;
@@ -24,16 +25,17 @@ public sealed partial class MainWindow : Window
 
     private const int MinimumWidth = 720;
     private const int MinimumHeight = 560;
+    private static readonly SizeInt32 DefaultSize = new(1100, 720);
 
     private string? _current;
     private bool _confirmingClose;
+    private RectInt32 _restoredBounds;
 
     public MainWindow()
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
-        AppWindow.Resize(new SizeInt32(1100, 720));
         if (File.Exists(App.IconFile))
         {
             AppWindow.SetIcon(App.IconFile); // taskbar and Alt+Tab
@@ -52,10 +54,21 @@ public sealed partial class MainWindow : Window
             presenter.PreferredMinimumWidth = (int)Math.Ceiling(MinimumWidth * scale);
             presenter.PreferredMinimumHeight = (int)Math.Ceiling(MinimumHeight * scale);
         }
+
+        RestorePlacement(App.Current.WindowPlacement);
+        AppWindow.Changed += OnAppWindowChanged;
         VersionText.Text = $"v{Updates.AppVersion.Display}";
         ApplyTheme(App.Current.Theme);
         Navigate("home");
     }
+
+    /// <summary>Where the window is now, to reopen it there; null if it was never placed.</summary>
+    public WindowPlacement? Placement =>
+        _restoredBounds.Width <= 0 || _restoredBounds.Height <= 0
+            ? null
+            : new WindowPlacement(
+                _restoredBounds.X, _restoredBounds.Y, _restoredBounds.Width, _restoredBounds.Height,
+                AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized });
 
     /// <summary>Set once closing was confirmed, so the Close() that follows is not asked again.</summary>
     public bool CloseConfirmed { get; private set; }
@@ -106,6 +119,44 @@ public sealed partial class MainWindow : Window
             AppTheme.Dark => TitleBarTheme.Dark,
             _ => TitleBarTheme.UseDefaultAppMode,
         };
+    }
+
+    /// <summary>The last place, pulled inside the nearest screen (a monitor may have been unplugged since).</summary>
+    private void RestorePlacement(WindowPlacement? saved)
+    {
+        var fit = saved is null
+            ? null
+            : WindowBounds.Fit(
+                new PixelRect(saved.X, saved.Y, saved.Width, saved.Height),
+                ToPixels(DisplayArea.GetFromRect(new RectInt32(saved.X, saved.Y, saved.Width, saved.Height), DisplayAreaFallback.Nearest).WorkArea));
+        if (fit is not { } bounds)
+        {
+            AppWindow.Resize(DefaultSize);
+        }
+        else
+        {
+            var rect = new RectInt32(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            AppWindow.MoveAndResize(rect);
+            AppWindow.MoveAndResize(rect); // landing on a monitor with another scale rescales the size once: apply it again
+        }
+
+        _restoredBounds = new RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+        if (saved?.Maximized == true && AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.Maximize();
+        }
+    }
+
+    private static PixelRect ToPixels(RectInt32 rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+
+    /// <summary>Remembers the bounds only while the window is neither maximized nor minimized, as Windows itself does.</summary>
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if ((args.DidPositionChange || args.DidSizeChange)
+            && sender.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Restored })
+        {
+            _restoredBounds = new RectInt32(sender.Position.X, sender.Position.Y, sender.Size.Width, sender.Size.Height);
+        }
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
