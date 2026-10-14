@@ -43,6 +43,7 @@ public sealed partial class ExpansionEngineTests : IAsyncDisposable
                     Snippet("s-fecha", "fecha", "Año {{date:yyyy}} {{cursor}}fin"),
                     Snippet("s-clip", "clip1", "Copiado: {{clipboard}}"),
                     Snippet("s-clipf", "clipf", "{{cliente}} envió {{clipboard}}"),
+                    Snippet("s-sel", "sel1", "<b>{{selection}}</b>"),
                 ]),
                 new LibraryGroup("g-chat", "Chat", null, true, [],
                 [

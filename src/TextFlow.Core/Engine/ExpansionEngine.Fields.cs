@@ -24,8 +24,9 @@ public sealed partial class ExpansionEngine
 
     /// <summary>Expands snippet content: plain text as is, templates rendered or, with fields, asked for first.</summary>
     /// <returns>Null when the fields prompt took over (nothing inserted yet).</returns>
+    /// <param name="selection">Text selected when the palette opened, for {{selection}}; null for typed triggers.</param>
     private async Task<InsertionResult?> ExpandContentAsync(
-        ActiveTarget target, MenuSnippetEntry snippet, int backspaces, string trailing, bool fromMenu)
+        ActiveTarget target, MenuSnippetEntry snippet, int backspaces, string trailing, bool fromMenu, string? selection = null)
     {
         var content = snippet.Content;
         if (!content.Contains("{{", StringComparison.Ordinal))
@@ -38,11 +39,11 @@ public sealed partial class ExpansionEngine
         if (template.RequiresInput && _fieldPrompt is not null)
         {
             CountUse(snippet); // its form opened: the user reached for this snippet, whatever happens to the fields
-            await AskFieldsAsync(target, template, backspaces, trailing, fromMenu, snippet.SendEnter).ConfigureAwait(false);
+            await AskFieldsAsync(target, template, backspaces, trailing, fromMenu, snippet.SendEnter, selection).ConfigureAwait(false);
             return null;
         }
 
-        var rendered = Render(template, NoValues);
+        var rendered = Render(template, NoValues, new SelectedText(_variables, selection));
         return CountUse(snippet, await ExpandAsync(target, rendered.Text + trailing, backspaces, fromMenu, CaretOffset(rendered, trailing), snippet.SendEnter)
             .ConfigureAwait(false));
     }
@@ -66,7 +67,7 @@ public sealed partial class ExpansionEngine
     }
 
     private async Task AskFieldsAsync(
-        ActiveTarget target, ParsedTemplate template, int backspaces, string trailing, bool fromMenu, bool sendEnter)
+        ActiveTarget target, ParsedTemplate template, int backspaces, string trailing, bool fromMenu, bool sendEnter, string? selection)
     {
         CancelFields(FieldsCloseReason.Replaced);
 
@@ -91,7 +92,8 @@ public sealed partial class ExpansionEngine
 
         var caret = target.Control.CaretBounds;
         // Filling the fields means copying, so {{clipboard}} keeps what was copied when the trigger fired.
-        var variables = template.UsesClipboard ? new FrozenClipboard(_variables, _variables.GetClipboardText()) : _variables;
+        IVariableSource live = new SelectedText(_variables, selection);
+        var variables = template.UsesClipboard ? new FrozenClipboard(live, live.GetClipboardText()) : live;
         var open = new OpenFields(target, template, variables, trailing, fromMenu, sendEnter, ++_fieldsSession);
         _openFields = open;
         _fieldPrompt!.Show(template.Fields, caret ?? _pointer.CursorAnchor(), target.Monitor, open.Session);
@@ -395,6 +397,16 @@ public sealed partial class ExpansionEngine
         public string? GetClipboardText() => clipboard;
 
         public string? GetSelectionText() => live.GetSelectionText();
+    }
+
+    /// <summary>The live variables plus what the palette saw selected; the host's own source never knows the selection.</summary>
+    private sealed class SelectedText(IVariableSource live, string? selection) : IVariableSource
+    {
+        public DateTimeOffset Now => live.Now;
+
+        public string? GetClipboardText() => live.GetClipboardText();
+
+        public string? GetSelectionText() => selection;
     }
 
     /// <summary>Date and time only: used when the host gives no variable source.</summary>

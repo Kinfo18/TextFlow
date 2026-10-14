@@ -140,6 +140,12 @@ public sealed unsafe class Win32TargetResolver : ITargetResolver
             && _fieldInspector.Restore((uint)target.ProcessId, elementId);
     }
 
+    public string? ReadSelectedText(ActiveTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return target.ProcessId != Environment.ProcessId ? _fieldInspector.ReadSelection((uint)target.ProcessId) : null;
+    }
+
     public TargetValidation ValidateTarget(ActiveTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);

@@ -134,6 +134,17 @@ internal sealed class FakeResolver : ITargetResolver
 
     public void BookmarkField(ActiveTarget target) => Bookmarks.Add(target);
 
+    /// <summary>The text the user had selected in the field; null = nothing selected or unreadable.</summary>
+    public string? Selection { get; set; }
+
+    public int SelectionReads { get; private set; }
+
+    public string? ReadSelectedText(ActiveTarget target)
+    {
+        SelectionReads++;
+        return Selection;
+    }
+
     public bool RestoreField(ActiveTarget target)
     {
         Restores++;

@@ -27,6 +27,7 @@ public sealed partial class ExpansionEngine
     private readonly IExpansionFeedback _feedback;
     private readonly IFieldPrompt? _fieldPrompt;
     private readonly IVariableSource _variables;
+    private PaletteSelection? _paletteSelection;
     private readonly IUsageRecorder? _usage;
     private readonly IPointerLocator _pointer;
     private readonly IDiagnosticSink _sink;
@@ -129,9 +130,25 @@ public sealed partial class ExpansionEngine
         if (target is not null)
         {
             _resolver.BookmarkField(target);
+            // {{selection}}: only the palette can see a selection; typing an abbreviation replaces it.
+            Volatile.Write(ref _paletteSelection, new PaletteSelection(target, await ReadSelectionAsync(target).ConfigureAwait(false)));
         }
 
         return target;
+    }
+
+    private async Task<string?> ReadSelectionAsync(ActiveTarget target)
+    {
+        try
+        {
+            return await Task.Run(() => _resolver.ReadSelectedText(target), _stopping)
+                .WaitAsync(_options.CaptureTimeout, _time, _stopping)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Command palette, step 2 (any thread): insert this snippet into the field captured in step 1.</summary>
@@ -168,7 +185,9 @@ public sealed partial class ExpansionEngine
             return;
         }
 
-        await ExpandContentAsync(target, snippet, backspaces: 0, trailing: string.Empty, fromMenu: false).ConfigureAwait(false);
+        var captured = Interlocked.Exchange(ref _paletteSelection, null);
+        var selection = captured is not null && ReferenceEquals(captured.Target, chosen.Target) ? captured.Text : null;
+        await ExpandContentAsync(target, snippet, backspaces: 0, trailing: string.Empty, fromMenu: false, selection).ConfigureAwait(false);
     }
 
     /// <summary>Completes once every event queued before the call (and the work it caused) has been handled.</summary>
@@ -695,6 +714,9 @@ public sealed partial class ExpansionEngine
     private sealed record MenuDelayElapsed(int Session) : EngineWork;
 
     private sealed record PaletteChosen(string SnippetId, ActiveTarget Target) : EngineWork;
+
+    /// <summary>What was selected in the field when the palette opened (content, kept in memory until the choice).</summary>
+    private sealed record PaletteSelection(ActiveTarget Target, string? Text);
 
     private sealed record PauseChanged(bool Paused) : EngineWork;
 

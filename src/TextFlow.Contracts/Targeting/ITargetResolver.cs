@@ -33,6 +33,12 @@ public interface ITargetResolver
     {
     }
 
+    /// <summary>
+    /// The text selected in the target's focused field ({{selection}}), read through UI Automation without touching
+    /// the clipboard. Null when nothing is selected or the app does not expose it. Never logged or stored.
+    /// </summary>
+    string? ReadSelectedText(ActiveTarget target) => null;
+
     /// <summary>Gives the focus and caret back to the field bookmarked for <paramref name="target"/>.</summary>
     /// <returns>False when nothing was bookmarked for it or the field refused (gone, re-rendered).</returns>
     bool RestoreField(ActiveTarget target) => false;

@@ -1,3 +1,4 @@
+using FlaUI.Core.Definitions;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
 using TextFlow.Contracts.Targeting;
@@ -18,6 +19,9 @@ public interface IFocusedControlInspector
 
     /// <summary>Focuses the bookmarked element again and puts its caret back.</summary>
     bool Restore(uint expectedProcessId, string elementId) => false;
+
+    /// <summary>The focused element's selected text ({{selection}}); null when nothing is selected.</summary>
+    string? ReadSelection(uint expectedProcessId) => null;
 }
 
 /// <summary>
@@ -28,6 +32,9 @@ public interface IFocusedControlInspector
 public sealed class UiaFocusedControlInspector : IFocusedControlInspector, IDisposable
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>A selection longer than this is cut: {{selection}} is for a phrase or a paragraph, not a document.</summary>
+    private const int MaxSelectionLength = 100_000;
 
     private readonly UIA3Automation _automation;
     private readonly TimeSpan _timeout;
@@ -49,11 +56,30 @@ public sealed class UiaFocusedControlInspector : IFocusedControlInspector, IDisp
     public PixelRect? LocateCaret(uint expectedProcessId) =>
         TimeBoxed(() => FocusedElementOf(expectedProcessId) is { } element ? UiaCaretReader.Read(element) : null);
 
-    /// <summary>Never reads text: the range is an opaque position that <see cref="Restore"/> selects again.</summary>
+    /// <summary>
+    /// Never reads text: the range is an opaque position that <see cref="Restore"/> selects again. A selection is kept
+    /// whole, so text chosen from the palette replaces it instead of landing next to it.
+    /// </summary>
     public void Bookmark(uint expectedProcessId, string elementId) => _bookmark = TimeBoxed(() =>
         FocusedElementOf(expectedProcessId) is { } element && RuntimeId(element) == elementId
-            ? new FieldBookmark(expectedProcessId, elementId, element, UiaCaretReader.CaretRange(element)?.Clone())
+            ? new FieldBookmark(expectedProcessId, elementId, element, (SelectedRange(element) ?? UiaCaretReader.CaretRange(element))?.Clone())
             : null);
+
+    /// <summary>Read on purpose for {{selection}} at the user's request (the palette); the text is never logged.</summary>
+    public string? ReadSelection(uint expectedProcessId) => TimeBoxed(() =>
+        FocusedElementOf(expectedProcessId) is { } element
+        && element.Patterns.Text.TryGetPattern(out var text)
+        && text.GetSelection() is { Length: > 0 } ranges
+            ? string.Concat(ranges.Select(range => range.GetText(MaxSelectionLength))) is { Length: > 0 } selected ? selected : null
+            : null);
+
+    /// <summary>The first selection range when it is not collapsed (endpoints compared, no text read).</summary>
+    private static FlaUI.Core.ITextRange? SelectedRange(AutomationElement element) =>
+        element.Patterns.Text.TryGetPattern(out var text)
+        && text.GetSelection() is [var first, ..]
+        && first.CompareEndpoints(TextPatternRangeEndpoint.Start, first, TextPatternRangeEndpoint.End) != 0
+            ? first
+            : null;
 
     public bool Restore(uint expectedProcessId, string elementId) => TimeBoxed(() =>
     {

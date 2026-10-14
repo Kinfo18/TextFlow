@@ -1,3 +1,4 @@
+using TextFlow.Core.Input;
 using TextFlow.Core.Diagnostics;
 
 namespace TextFlow.Core.Tests.Engine;
@@ -32,6 +33,45 @@ public sealed partial class ExpansionEngineTests
         Assert.Equal("texto cc", request.Text);
         Assert.Equal(0, request.BackspacesBefore);
         Assert.Equal(["s-cc"], _usage.Recorded);
+    }
+
+    [Fact]
+    public async Task PaletteChoice_PutsTheTextSelectedWhenThePaletteOpened_IntoSelection()
+    {
+        await StartAsync();
+        _resolver.Selection = "importante";
+
+        var target = await _engine.CapturePaletteTargetAsync();
+        _resolver.Selection = null; // the palette has the focus now: nothing is selected any more
+        _engine.InsertFromPalette("s-sel", target!);
+        await SettleAsync();
+
+        Assert.Equal("<b>importante</b>", Assert.Single(_insertion.Requests).Text);
+    }
+
+    [Fact]
+    public async Task PaletteChoice_WithNothingSelected_LeavesSelectionEmpty()
+    {
+        await StartAsync();
+
+        var target = await _engine.CapturePaletteTargetAsync();
+        _engine.InsertFromPalette("s-sel", target!);
+        await SettleAsync();
+
+        Assert.Equal("<b></b>", Assert.Single(_insertion.Requests).Text);
+    }
+
+    [Fact]
+    public async Task TypedTrigger_NeverReadsTheSelection()
+    {
+        await StartAsync();
+        _resolver.Selection = "no";
+
+        _hook.Raise(new TriggerTyped(Match("sel1"), FakeResolver.Window));
+        await SettleAsync();
+
+        Assert.Equal("<b></b>", Assert.Single(_insertion.Requests).Text);
+        Assert.Equal(0, _resolver.SelectionReads);
     }
 
     [Fact]

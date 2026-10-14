@@ -9,5 +9,5 @@ public sealed class ClipboardVariables(ClipboardStrategy clipboard, TimeProvider
 
     public string? GetClipboardText() => clipboard.ReadText();
 
-    public string? GetSelectionText() => null; // {{selection}}: later (pendiente técnico 3)
+    public string? GetSelectionText() => null; // {{selection}} comes from the engine: only the palette sees a selection
 }
