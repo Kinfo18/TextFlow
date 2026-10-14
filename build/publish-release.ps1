@@ -67,8 +67,11 @@ try {
     dotnet vpk download github --repoUrl $repoUrl --outputDir $releasesDir
     if ($LASTEXITCODE -ne 0) { Write-Warning 'No se pudo bajar la versión anterior: solo habrá paquete completo.' }
 
+    # docs\release-notes-v<Version>.md, when it exists, becomes the GitHub release text.
+    $notes = Join-Path $root "docs\release-notes-v$Version.md"
+    $notesArgs = if (Test-Path $notes) { @('--releaseNotes', $notes) } else { @() }
     dotnet vpk pack --packId $packId --packVersion $Version --packDir $publishDir --mainExe TextFlow.exe `
-        --packTitle TextFlow --packAuthors Kinfo18 --icon $icon --outputDir $releasesDir
+        --packTitle TextFlow --packAuthors Kinfo18 --icon $icon --outputDir $releasesDir @notesArgs
     if ($LASTEXITCODE -ne 0) { throw "vpk pack falló ($LASTEXITCODE)." }
 
     if ($Upload) {

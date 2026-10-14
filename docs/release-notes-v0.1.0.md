@@ -1,6 +1,4 @@
-# TextFlow v0.1.0 (borrador)
-
-> Borrador para H6.4. Se publica cuando la lista de [incidencias](v0.1-incidencias.md) esté cerrada o aceptada.
+# TextFlow v0.1.0
 
 Primera versión para uso diario: sustituye a aText en la jornada de trabajo. Funciona sin red y nunca guarda lo que escribes; los registros de diagnóstico no tienen contenido.
 
@@ -8,14 +6,18 @@ Primera versión para uso diario: sustituye a aText en la jornada de trabajo. Fu
 
 - **Expansión instantánea** de abreviaturas, sin delimitador, como en aText. Las teclas muertas y AltGr se respetan, y las abreviaturas pueden tener espacios (hasta 255 caracteres).
 - **Menús de grupo.** Escribir la abreviatura de un grupo (`LC` o `lc`) abre su menú junto al cursor, también en Chrome y Edge. Se elige con números, flechas o el ratón, sin robar el foco. El menú aparece tras una pausa de 250 ms: si sigues escribiendo una palabra que empieza igual («dirección»), no se abre. `lc1` tecleado de memoria funciona igual.
+- **Paleta de comandos.** `Ctrl+Shift+Alt+Espacio` (configurable) abre un buscador de todos los snippets encima de la app en la que escribes; Enter inserta el elegido donde estabas.
 - **Biblioteca.** Incluye:
   - importación del backup de aText, que sigue el archivo si cambia;
-  - editor de snippets y grupos con búsqueda;
+  - editor de snippets y grupos con búsqueda; un resultado muestra su grupo en el árbol, y cada grupo indica su abreviatura y cuántos comandos tiene;
+  - «Mover a» otro grupo, desde el editor, con clic derecho o con varios comandos seleccionados a la vez;
+  - cuántas veces se usa cada snippet y el filtro «Sin usar en 30 días»;
   - avisos de abreviaturas en conflicto;
   - exportación e importación de copias de TextFlow;
   - copia automática antes de cada importación.
-- **Plantillas con campos.** `{{cliente}}` y similares se rellenan copiando cada valor, y el texto se inserta solo tras la última copia. También hay `{{clipboard}}`, `{{date:…}}` y `{{cursor}}`, y un asistente que convierte los antiguos `XXX` en campos. Cada snippet puede pulsar Enter al terminar, para chats.
+- **Plantillas con campos.** `{{cliente}}` y similares se rellenan copiando cada valor, y el texto se inserta solo tras la última copia. También hay `{{clipboard}}`, `{{date:…}}`, `{{time:…}}`, `{{cursor}}` y `{{selection}}` (lo que tenías seleccionado al abrir la paleta, que queda reemplazado), con una leyenda en el editor («¿Qué hace cada una?»), y un asistente que convierte los antiguos `XXX` en campos. Cada snippet puede pulsar Enter al terminar, para chats.
 - **Inserción segura.** Valida el destino antes de escribir, excluye apps por nombre y nunca escribe en campos de contraseña. Restaura el portapapeles.
+- **Ventana.** Inicio muestra el estado, el día y los snippets más usados; la ventana vuelve a abrirse donde la dejaste (también maximizada) y sin parpadeo.
 - **Bandeja.** Pausa (atajo configurable, por defecto `Ctrl+Shift+Alt+P`), inicio con Windows (activado por defecto), sonido opcional con volumen y tema claro, oscuro o del sistema.
 - **Diagnóstico.** Métricas del día sin contenido: expansiones, % insertadas bien, tiempos, programas, menús, estabilidad y memoria. Se pueden consultar los 7 últimos días.
 - **Ligera en la bandeja.** Al cerrar la ventana se libera su memoria: unos 10–40 MB en uso mientras está en la bandeja.
