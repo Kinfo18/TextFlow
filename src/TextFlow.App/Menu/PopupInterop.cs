@@ -92,6 +92,21 @@ internal static unsafe partial class PopupInterop
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowPos(nint hwnd, nint insertAfter, int x, int y, int cx, int cy, uint flags);
 
+    private const uint DwmwaCloak = 13;
+
+    /// <summary>
+    /// Keeps a window off the screen while it is still laid out and rendered (DWM cloak), so it can be placed,
+    /// maximized and painted before anyone sees it: no blank flash or jump when it opens.
+    /// </summary>
+    public static void Cloak(nint hwnd, bool cloaked)
+    {
+        var value = cloaked ? 1 : 0;
+        _ = DwmSetWindowAttribute(hwnd, DwmwaCloak, &value, sizeof(int)); // on failure the window just shows uncloaked
+    }
+
+    [LibraryImport("dwmapi.dll")]
+    private static partial int DwmSetWindowAttribute(nint hwnd, uint attribute, void* value, uint size);
+
     /// <summary>Window DPI as a scale factor (1.25 at 125 %); 1 when Windows cannot tell.</summary>
     public static double DpiScale(nint hwnd) => GetDpiForWindow(hwnd) is var dpi and > 0 ? dpi / 96.0 : 1.0;
 

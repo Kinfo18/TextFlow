@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window
     private const int MinimumWidth = 720;
     private const int MinimumHeight = 560;
     private static readonly SizeInt32 DefaultSize = new(1100, 720);
+    private static readonly TimeSpan RevealFallback = TimeSpan.FromSeconds(1);
 
     private string? _current;
     private bool _confirmingClose;
@@ -34,6 +35,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        Menu.PopupInterop.Cloak(hwnd, true); // shown only once placed and painted (see RevealWhenPainted)
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
         if (File.Exists(App.IconFile))
@@ -50,7 +53,7 @@ public sealed partial class MainWindow : Window
         {
             // Below this the two Snippets columns cannot fit (tree and list/editor minimums, margins and the compact pane).
             // The presenter works in physical pixels: scale the logical minimum (125 % on the dev laptop).
-            var scale = Menu.PopupInterop.DpiScale(WinRT.Interop.WindowNative.GetWindowHandle(this));
+            var scale = Menu.PopupInterop.DpiScale(hwnd);
             presenter.PreferredMinimumWidth = (int)Math.Ceiling(MinimumWidth * scale);
             presenter.PreferredMinimumHeight = (int)Math.Ceiling(MinimumHeight * scale);
         }
@@ -60,6 +63,35 @@ public sealed partial class MainWindow : Window
         VersionText.Text = $"v{Updates.AppVersion.Display}";
         ApplyTheme(App.Current.Theme);
         Navigate("home");
+        RevealWhenPainted(hwnd);
+    }
+
+    /// <summary>
+    /// Uncloaks after the content's first frame: before this, opening showed a blank window for a moment and a
+    /// maximized one first appeared restored, then jumped. A fallback uncloaks anyway if Loaded never comes.
+    /// </summary>
+    private void RevealWhenPainted(nint hwnd)
+    {
+        var revealed = false;
+        void Reveal()
+        {
+            if (!revealed)
+            {
+                revealed = true;
+                Menu.PopupInterop.Cloak(hwnd, false);
+            }
+        }
+
+        if (Content is FrameworkElement root)
+        {
+            root.Loaded += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, Reveal);
+        }
+
+        var fallback = DispatcherQueue.CreateTimer();
+        fallback.Interval = RevealFallback;
+        fallback.IsRepeating = false;
+        fallback.Tick += (_, _) => Reveal();
+        fallback.Start();
     }
 
     /// <summary>Where the window is now, to reopen it there; null if it was never placed.</summary>
@@ -127,7 +159,7 @@ public sealed partial class MainWindow : Window
         var fit = saved is null
             ? null
             : WindowBounds.Fit(
-                new PixelRect(saved.X, saved.Y, saved.Width, saved.Height),
+                new WindowRect(saved.X, saved.Y, saved.Width, saved.Height),
                 ToPixels(DisplayArea.GetFromRect(new RectInt32(saved.X, saved.Y, saved.Width, saved.Height), DisplayAreaFallback.Nearest).WorkArea));
         if (fit is not { } bounds)
         {
@@ -147,7 +179,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static PixelRect ToPixels(RectInt32 rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+    private static WindowRect ToPixels(RectInt32 rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
 
     /// <summary>Remembers the bounds only while the window is neither maximized nor minimized, as Windows itself does.</summary>
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
