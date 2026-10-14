@@ -143,6 +143,46 @@ public sealed class SqliteStorageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ReorderSnippets_StoresTheNewOrderInsideTheGroup_KeepingTheirContent()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await library.ReorderSnippetsAsync("g-t", ["s-sig", "s-cc"], CancellationToken.None);
+
+        var temples = (await library.LoadAsync(CancellationToken.None)).Groups.Single(g => g.Id == "g-t");
+        Assert.Equal(["s-sig", "s-cc"], temples.Snippets.Select(s => s.Id));
+        Assert.Equal(["cc"], temples.Snippets[1].Abbreviations);
+        Assert.True(temples.Snippets[1].SendEnter);
+    }
+
+    [Fact]
+    public async Task ReorderSnippets_WithASnippetFromAnotherGroup_ChangesNothing()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            library.ReorderSnippetsAsync("g-t", ["s-sig", "s-nc"], CancellationToken.None));
+
+        var temples = (await library.LoadAsync(CancellationToken.None)).Groups.Single(g => g.Id == "g-t");
+        Assert.Equal(["s-cc", "s-sig"], temples.Snippets.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task ReorderSnippets_LeavingOneOfTheGroupOut_ChangesNothing()
+    {
+        var library = Library();
+        await library.ReplaceAllAsync(SampleLibrary(), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            library.ReorderSnippetsAsync("g-t", ["s-sig"], CancellationToken.None));
+
+        var temples = (await library.LoadAsync(CancellationToken.None)).Groups.Single(g => g.Id == "g-t");
+        Assert.Equal(["s-cc", "s-sig"], temples.Snippets.Select(s => s.Id));
+    }
+
+    [Fact]
     public async Task MoveSnippets_PutsThemLastInTheTarget_InTheGivenOrder_KeepingTheirContent()
     {
         var library = Library();

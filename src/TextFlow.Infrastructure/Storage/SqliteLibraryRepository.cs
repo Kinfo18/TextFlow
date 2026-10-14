@@ -246,6 +246,41 @@ public sealed class SqliteLibraryRepository : ILibraryRepository
         await transaction.CommitAsync(ct).ConfigureAwait(false); // nothing moves unless every id matched
     }
 
+    public async Task ReorderSnippetsAsync(string groupId, IReadOnlyList<string> snippetIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(snippetIds);
+        await using var connection = await _db.OpenAsync(ct).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+        await using (var count = connection.CreateCommand())
+        {
+            count.Transaction = transaction;
+            count.CommandText = "SELECT COUNT(*) FROM snippet WHERE group_id = $group;";
+            count.Parameters.AddWithValue("$group", groupId);
+            if (Convert.ToInt64(await count.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture) != snippetIds.Count
+                || snippetIds.Distinct(StringComparer.Ordinal).Count() != snippetIds.Count)
+            {
+                throw new InvalidOperationException("El orden no coincide con los comandos del grupo: vuelve a abrirlo.");
+            }
+        }
+
+        for (var i = 0; i < snippetIds.Count; i++)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE snippet SET sort_order = $order WHERE id = $id AND group_id = $group;";
+            command.Parameters.AddWithValue("$order", i);
+            command.Parameters.AddWithValue("$id", snippetIds[i]);
+            command.Parameters.AddWithValue("$group", groupId);
+            if (await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidOperationException("El orden incluye un comando que no está en ese grupo.");
+            }
+        }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false); // nothing is stored unless every id matched
+    }
+
     public async Task DeleteSnippetAsync(string snippetId, CancellationToken ct)
     {
         await using var connection = await _db.OpenAsync(ct).ConfigureAwait(false);

@@ -132,7 +132,12 @@
             <Border Grid.Row="1" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="4">
                 <ListView x:Name="SnippetList" SelectionMode="Extended" SelectionChanged="OnSnippetSelected"
-                          ContextRequested="OnListContextRequested" />
+                          ContextRequested="OnListContextRequested" DragItemsCompleted="OnSnippetsDragged">
+                    <ListView.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Up" Modifiers="Menu" Invoked="OnMoveUpInvoked" />
+                        <KeyboardAccelerator Key="Down" Modifiers="Menu" Invoked="OnMoveDownInvoked" />
+                    </ListView.KeyboardAccelerators>
+                </ListView>
             </Border>
         </Grid>
 

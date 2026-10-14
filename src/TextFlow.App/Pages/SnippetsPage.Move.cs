@@ -87,6 +87,10 @@ public sealed partial class SnippetsPage
         };
         FillMoveMenu(move.Items, groups.Count == 1 ? groups[0] : null, target => MoveAsync([.. rows.Select(row => row.Snippet.Id)], target));
         menu.Items.Add(move);
+        if (rows.Count == 1)
+        {
+            AddOrderItems(menu.Items, clicked.Item1.Id);
+        }
 
         if (clicked.Item3 is not null)
         {

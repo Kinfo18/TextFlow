@@ -43,6 +43,9 @@ public sealed class LibraryService : IDisposable
     public Task MoveSnippetsAsync(IReadOnlyList<string> snippetIds, string groupId, CancellationToken ct) =>
         WriteAsync(r => r.MoveSnippetsAsync(snippetIds, groupId, ct), ct);
 
+    public Task ReorderSnippetsAsync(string groupId, IReadOnlyList<string> snippetIds, CancellationToken ct) =>
+        WriteAsync(r => r.ReorderSnippetsAsync(groupId, snippetIds, ct), ct);
+
     public Task DeleteSnippetAsync(string snippetId, CancellationToken ct) => WriteAsync(r => r.DeleteSnippetAsync(snippetId, ct), ct);
 
     private async Task WriteAsync(Func<ILibraryRepository, Task> write, CancellationToken ct)

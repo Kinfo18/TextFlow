@@ -34,6 +34,10 @@ public interface ILibraryRepository
     /// </summary>
     Task MoveSnippetsAsync(IReadOnlyList<string> snippetIds, string groupId, CancellationToken ct);
 
+    /// <summary>Stores the order of a group's snippets as given (drag and drop in the list); it fixes the group menu order.</summary>
+    /// <exception cref="InvalidOperationException">The ids are not exactly the snippets of <paramref name="groupId"/>.</exception>
+    Task ReorderSnippetsAsync(string groupId, IReadOnlyList<string> snippetIds, CancellationToken ct);
+
     Task DeleteSnippetAsync(string snippetId, CancellationToken ct);
 }
 

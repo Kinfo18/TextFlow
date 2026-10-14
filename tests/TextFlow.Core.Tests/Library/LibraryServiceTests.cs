@@ -79,6 +79,20 @@ public sealed class LibraryServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReorderingSnippets_RaisesChanged_InTheNewOrder()
+    {
+        static LibrarySnippet Note(string id) => new(id, id, "x", IsRichText: false, [id]);
+        await _service.ImportAsync(
+            Library() with { Groups = [new LibraryGroup("g-t", "T", null, true, [], [Note("a"), Note("b"), Note("c")])] },
+            CancellationToken.None);
+        _changes.Clear();
+
+        await _service.ReorderSnippetsAsync("g-t", ["c", "a", "b"], CancellationToken.None);
+
+        Assert.Equal(["c", "a", "b"], Assert.Single(_changes).Groups.Single().Snippets.Select(s => s.Id));
+    }
+
+    [Fact]
     public async Task DeletingAGroup_RaisesChanged()
     {
         await _service.ImportAsync(Library(), CancellationToken.None);
@@ -128,6 +142,18 @@ public sealed class LibraryServiceTests : IDisposable
         {
             var byId = _root.Groups.ToDictionary(g => g.Id);
             _root = _root with { Groups = childIds.Select(id => byId[id]).ToArray() };
+            return Task.CompletedTask;
+        }
+
+        public Task ReorderSnippetsAsync(string groupId, IReadOnlyList<string> snippetIds, CancellationToken ct)
+        {
+            _root = _root with
+            {
+                Groups = _root.Groups.Select(g => g.Id != groupId ? g : g with
+                {
+                    Snippets = snippetIds.Select(id => g.Snippets.Single(s => s.Id == id)).ToArray(),
+                }).ToArray(),
+            };
             return Task.CompletedTask;
         }
     }

@@ -123,7 +123,7 @@ public sealed partial class SnippetsPage : Page, IRefreshable
 
         ListSubtitle.Text = group.Abbreviation is { } abbreviation ? $"{count} · se abre con {abbreviation}" : count;
         NewSnippetButton.IsEnabled = true;
-        Fill(group.Snippets.Select(s => (s, group.Id, (string?)null)));
+        Fill(group.Snippets.Select(s => (s, group.Id, (string?)null)), reorderGroupId: group.Id);
     }
 
     private void ShowResults(string query)
@@ -142,8 +142,11 @@ public sealed partial class SnippetsPage : Page, IRefreshable
         Fill(hits.Select(h => (h.Snippet, h.GroupId, (string?)string.Join(" › ", h.GroupPath))));
     }
 
-    private void Fill(IEnumerable<(LibrarySnippet Snippet, string GroupId, string? Path)> rows)
+    /// <param name="reorderGroupId">The group whose commands are listed in their stored order; only then can they be dragged.</param>
+    private void Fill(IEnumerable<(LibrarySnippet Snippet, string GroupId, string? Path)> rows, string? reorderGroupId = null)
     {
+        rows = rows.ToList();
+        AllowReorder(reorderGroupId, rows.Select(row => row.Snippet.Id));
         _revertingSelection = true; // rebuilding the list is not a user selection
         try
         {
