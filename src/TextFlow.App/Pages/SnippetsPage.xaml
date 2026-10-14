@@ -214,13 +214,14 @@
                                         <MenuFlyoutItem Text="Fecha de hoy" Tag="{}{{date}}" Click="OnInsertToken" />
                                         <MenuFlyoutItem Text="Hora actual" Tag="{}{{time}}" Click="OnInsertToken" />
                                         <MenuFlyoutItem Text="Lo copiado (portapapeles)" Tag="{}{{clipboard}}" Click="OnInsertToken" />
+                                        <MenuFlyoutItem Text="Lo seleccionado (desde la paleta)" Tag="{}{{selection}}" Click="OnInsertToken" />
                                         <MenuFlyoutItem Text="Dónde queda el cursor al expandir" Tag="{}{{cursor}}" Click="OnInsertToken" />
                                     </MenuFlyout>
                                 </DropDownButton.Flyout>
                             </DropDownButton>
-                            <TextBlock Text="Un campo como {{cliente}} se rellena copiando el dato al expandir."
-                                       Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.65" VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
+                            <!-- What each variable does (SnippetsPage.Legend.cs) -->
+                            <HyperlinkButton Content="¿Qué hace cada una?" Click="OnShowVariableHelp" VerticalAlignment="Center"
+                                             ToolTipService.ToolTip="Qué hacen los campos y variables como {{date}} o {{selection}}" />
                         </StackPanel>
                         <RadioButtons x:Name="ModeChoice" Header="Se expande" MaxColumns="2" SelectionChanged="OnModeChanged">
                             <x:String>Al escribir la abreviatura</x:String>
