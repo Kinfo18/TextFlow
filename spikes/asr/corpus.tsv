@@ -1,13 +1,56 @@
-id	reference
-01	El rider indica que el local está cerrado y el pedido no está confirmado.
-02	Solicito al rider dirigirse al pickup y esperar diez minutos.
-03	La orden lleva más de veinte minutos demorada en el restaurante.
-04	El cliente no responde, realizo dos llamadas sin éxito y dejo una nota.
-05	Por favor, envíame el código de entrega para completar el dropoff.
-06	Reasigno la orden porque la distancia al local es mayor a tres kilómetros.
-07	Hoy tenemos una reunión a las cuatro y media para revisar el dashboard.
-08	Necesito que actualices el ticket en Jira y lo marques como resuelto.
-09	El pago con tarjeta fue rechazado, así que el cliente pagará en efectivo.
-10	Gracias por tu paciencia, ya escalé el caso al equipo de soporte.
-11	¿Puedes confirmar si el producto faltante era una bebida o un postre?
-12	Envío la solución por el chat y cierro el caso con la etiqueta correcta.
+id	cond	reference
+01	silencio	El rider indica que el local está cerrado y el pedido no está confirmado.
+02	silencio	Solicito al rider dirigirse al pickup y esperar diez minutos.
+03	silencio	La orden lleva más de veinte minutos demorada en el restaurante.
+04	silencio	El cliente no responde, realizo dos llamadas sin éxito y dejo una nota.
+05	silencio	Por favor, envíame el código de entrega para completar el dropoff.
+06	silencio	Reasigno la orden porque la distancia al local es mayor a tres kilómetros.
+07	silencio	Hoy tenemos una reunión a las cuatro y media para revisar el dashboard.
+08	silencio	Necesito que actualices el ticket en Jira y lo marques como resuelto.
+09	silencio	El pago con tarjeta fue rechazado, así que el cliente pagará en efectivo.
+10	silencio	Gracias por tu paciencia, ya escalé el caso al equipo de soporte.
+11	silencio	¿Puedes confirmar si el producto faltante era una bebida o un postre?
+12	silencio	Envío la solución por el chat y cierro el caso con la etiqueta correcta.
+13	silencio	Hola, buenas tardes, gracias por comunicarte con nosotros.
+14	silencio	Lamento mucho los inconvenientes con tu pedido.
+15	silencio	Voy a revisar el estado de la orden, dame un momento por favor.
+16	silencio	El rider ya recogió el pedido y va en camino a tu dirección.
+17	silencio	Te confirmo que el reembolso se verá reflejado en un plazo de cinco a siete días hábiles.
+18	silencio	El restaurante canceló la orden por falta de stock.
+19	silencio	¿Me puedes enviar una foto del producto en mal estado?
+20	silencio	Queda pendiente la validación del equipo de operaciones.
+21	silencio	El rider reporta que la dirección está incompleta y no encuentra el edificio.
+22	silencio	Por favor, comparte una referencia o el número del apartamento.
+23	silencio	La orden quedó marcada como entregada, pero el cliente dice que no la recibió.
+24	silencio	Abro un ticket en Jira con prioridad alta para el equipo de producto.
+25	silencio	El dropoff se realizó a las tres y cuarto según el registro de la app.
+26	silencio	Comparto el enlace del dashboard en el canal de Slack.
+27	silencio	Mañana a las nueve hacemos el standup del equipo.
+28	silencio	El cliente solicita cambiar el método de pago a efectivo.
+29	silencio	Aplico un cupón de compensación por la demora.
+30	silencio	¿Hay algo más en lo que te pueda ayudar hoy?
+31	silencio	Envía saludo.
+32	silencio	Envía despedida.
+33	silencio	Abre el menú de reembolsos.
+34	silencio	Que tengas un excelente día, hasta pronto.
+35	silencio	El pickup está retrasado porque el local tiene mucha demanda.
+36	ruido	El rider indica que el local está cerrado y el pedido no está confirmado.
+37	ruido	Necesito que actualices el ticket en Jira y lo marques como resuelto.
+38	ruido	Por favor, envíame el código de entrega para completar el dropoff.
+39	ruido	Hola, buenas tardes, gracias por comunicarte con nosotros.
+40	ruido	Voy a revisar el estado de la orden, dame un momento por favor.
+41	ruido	El rider ya recogió el pedido y va en camino a tu dirección.
+42	ruido	Te confirmo que el reembolso se verá reflejado en un plazo de cinco a siete días hábiles.
+43	ruido	¿Me puedes enviar una foto del producto en mal estado?
+44	ruido	La orden quedó marcada como entregada, pero el cliente dice que no la recibió.
+45	ruido	Comparto el enlace del dashboard en el canal de Slack.
+46	ruido	El cliente solicita cambiar el método de pago a efectivo.
+47	ruido	Aplico un cupón de compensación por la demora.
+48	ruido	Envía saludo.
+49	ruido	Envía despedida.
+50	ruido	Reasigno la orden porque la distancia al local es mayor a tres kilómetros.
+51	ruido	El pago con tarjeta fue rechazado, así que el cliente pagará en efectivo.
+52	ruido	Queda pendiente la validación del equipo de operaciones.
+53	ruido	El restaurante canceló la orden por falta de stock.
+54	ruido	Mañana a las nueve hacemos el standup del equipo.
+55	ruido	¿Hay algo más en lo que te pueda ayudar hoy?

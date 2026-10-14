@@ -1,12 +1,14 @@
-"""S5 ASR benchmark: whisper.cpp vs Parakeet (sherpa-onnx) on the user's own recordings.
+"""ASR benchmark (S5, extended for V0.2 H0.2): whisper.cpp vs Parakeet (sherpa-onnx) on the user's own recordings.
 
-Usage:  python spikes/asr/bench.py [--recordings models/recordings] [--runs 3]
+Usage:  python spikes/asr/bench.py [--recordings models/recordings-v2] [--engines a,b] [--server]
 
 Metrics per engine:
   - WER (lowercase, no punctuation) and WER without accents (diacritics folded)
   - cold latency: one process per phrase (model load + decode), p50/p95
   - warm latency: one process for all phrases; (batch time - cold load) / n
   - peak VRAM (nvidia-smi, sampled every 100 ms)
+  - with --server: real warm latency per phrase through whisper-server (model loaded once), p50/p95
+  - WER per recording condition (silencio / ruido) and the phrases with most errors (id only)
 Transcripts are printed only as WER numbers; the recordings are the user's voice and stay in models/.
 """
 
@@ -23,10 +25,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
 WHISPER_CUDA = MODELS / "whisper-cuda/Release/whisper-cli.exe"
+WHISPER_SERVER = MODELS / "whisper-cuda/Release/whisper-server.exe"
 WHISPER_CPU = MODELS / "whisper-cpu/Release/whisper-cli.exe"
 SHERPA = MODELS / "sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-no-tts/bin/sherpa-onnx-offline.exe"
 PARAKEET = MODELS / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
-PROMPT = "Rider, pickup, dropoff, pedido, dashboard, ticket, Jira."
+# H0.2: the wider prompt took silent-room WER from 3.0 % to 2.4 % (S5 used "Rider, pickup, dropoff, pedido, dashboard, ticket, Jira.").
+PROMPT = ("Soporte de pedidos a domicilio: rider, pickup, dropoff, pedido, orden, reembolso, cupón, stock, standup, "
+          "dashboard, ticket, Jira, Slack.")
 
 
 def whisper(exe, model, gpu=True):
@@ -135,23 +140,93 @@ def percentile(values, p):
     return ordered[min(len(ordered) - 1, round(p / 100 * (len(ordered) - 1)))]
 
 
+def server_latencies(wavs, model="ggml-large-v3-turbo-q5_0.bin", port=8178):
+    """Warm latency per phrase as the app will see it: whisper-server keeps the model loaded between requests."""
+    import urllib.request
+    import uuid
+
+    proc = subprocess.Popen([str(WHISPER_SERVER), "-m", str(MODELS / model), "-l", "es", "--prompt", PROMPT, "-t", "6",
+                             "--port", str(port), "-nt"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        url = f"http://127.0.0.1:{port}/inference"
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.5)
+
+        def post(wav):
+            boundary = uuid.uuid4().hex
+            body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\n"
+                    f"Content-Type: audio/wav\r\n\r\n").encode() + wav.read_bytes() + (
+                    f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson"
+                    f"\r\n--{boundary}--\r\n").encode()
+            req = urllib.request.Request(url, data=body, headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+            start = time.perf_counter()
+            text = json.loads(urllib.request.urlopen(req, timeout=60).read().decode("utf-8"))["text"]
+            return text, time.perf_counter() - start
+
+        post(wavs[0])  # first request warms CUDA kernels
+        results = [post(w) for w in wavs]
+        return [t for t, _ in results], [s for _, s in results]
+    finally:
+        proc.kill()
+
+
+def score(items, hyps):
+    """Total WER, WER without accents, WER per condition and the per-phrase error counts."""
+    per_phrase, by_cond = [], {}
+    errors = total = errors_folded = 0
+    for (rid, cond, _wav, ref), hyp in zip(items, hyps):
+        e, n = wer(normalize(ref), normalize(hyp))
+        ef, _ = wer(normalize(ref, True), normalize(hyp, True))
+        errors, total, errors_folded = errors + e, total + n, errors_folded + ef
+        ce, cn = by_cond.get(cond, (0, 0))
+        by_cond[cond] = (ce + e, cn + n)
+        per_phrase.append((rid, e, n))
+    return errors / total, errors_folded / total, {c: e / n for c, (e, n) in by_cond.items()}, per_phrase
+
+
+def load_items(corpus, recordings):
+    lines = Path(corpus).read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    items = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        cols = dict(zip(header, line.split("\t")))
+        wav = Path(recordings) / f"{cols['id']}.wav"
+        if wav.exists():
+            items.append((cols["id"], cols.get("cond", "silencio"), wav, cols["reference"]))
+    return items
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--recordings", default=str(MODELS / "recordings"))
+    parser.add_argument("--recordings", default=str(MODELS / "recordings-v2"))
     parser.add_argument("--corpus", default=str(Path(__file__).with_name("corpus.tsv")))
     parser.add_argument("--engines", default=",".join(ENGINES))
+    parser.add_argument("--server", action="store_true", help="also measure turbo through whisper-server (real warm latency)")
+    parser.add_argument("--prompt", help="vocabulary prompt for whisper (default: the S5 one)")
+    parser.add_argument("--show", action="store_true", help="print reference vs transcript for phrases with errors")
     args = parser.parse_args()
 
-    rows = [line.split("\t", 1) for line in Path(args.corpus).read_text(encoding="utf-8").splitlines()[1:] if line.strip()]
-    items = [(Path(args.recordings) / f"{rid}.wav", ref) for rid, ref in rows if (Path(args.recordings) / f"{rid}.wav").exists()]
+    if args.prompt:
+        global PROMPT
+        PROMPT = args.prompt
+    items = load_items(args.corpus, args.recordings)
     if not items:
         raise SystemExit(f"No recordings found in {args.recordings}. Run spikes/asr/record-corpus.ps1 first.")
-    wavs = [w for w, _ in items]
+    wavs = [w for _, _, w, _ in items]
     audio_seconds = sum((w.stat().st_size - 44) / 32000 for w in wavs)
-    print(f"{len(items)} grabaciones, {audio_seconds:.1f} s de audio\n")
+    conds = sorted({c for _, c, _, _ in items})
+    print(f"{len(items)} grabaciones ({', '.join(f'{c}: {sum(1 for i in items if i[1] == c)}' for c in conds)}), "
+          f"{audio_seconds:.1f} s de audio\n")
 
-    results = []
-    for name in args.engines.split(","):
+    results, details = [], {}
+    for name in [e for e in args.engines.split(",") if e]:
         command, parse = ENGINES[name]
         cold = []
         with VramSampler() as vram:
@@ -163,19 +238,36 @@ def main():
             out, batch = run(command(wavs))
         # batch = load + Σ decode; min(cold) = load + one decode → the rest is n-1 warm decodes
         warm = max(0.0, (batch - min(cold)) / max(1, len(wavs) - 1))
+        w, wf, by_cond, per_phrase = score(items, hyps)
+        results.append((name, w, wf, by_cond, statistics.median(cold), percentile(cold, 95), warm, warm, vram.peak))
+        details[name] = (per_phrase, hyps)
 
-        errors = total = errors_folded = 0
-        for (wav, ref), hyp in zip(items, hyps):
-            e, n = wer(normalize(ref), normalize(hyp))
-            ef, _ = wer(normalize(ref, True), normalize(hyp, True))
-            errors, total, errors_folded = errors + e, total + n, errors_folded + ef
+    if args.server:
+        with VramSampler() as vram:
+            hyps, lat = server_latencies(wavs)
+        w, wf, by_cond, per_phrase = score(items, hyps)
+        results.append(("turbo-server (caliente)", w, wf, by_cond, float("nan"), float("nan"),
+                        statistics.median(lat), percentile(lat, 95), vram.peak))
+        details["turbo-server (caliente)"] = (per_phrase, hyps)
 
-        results.append((name, errors / total, errors_folded / total, statistics.median(cold), percentile(cold, 95), warm, vram.peak))
+    cond_cols = "".join(f"{c[:8]:>9}" for c in conds)
+    print(f"{'motor':<26}{'WER':>7}{'WER*':>7}{cond_cols}{'frío p50':>10}{'frío p95':>10}{'cal p50':>9}{'cal p95':>9}{'VRAM':>10}")
+    for name, w, wf, by_cond, p50, p95, wp50, wp95, peak in results:
+        cells = "".join(f"{by_cond.get(c, 0):>9.1%}" for c in conds)
+        cold = f"{p50:>9.2f}s{p95:>9.2f}s" if p50 == p50 else f"{'—':>10}{'—':>10}"  # NaN: not measured
+        print(f"{name:<26}{w:>7.1%}{wf:>7.1%}{cells}{cold}{wp50:>8.2f}s{wp95:>8.2f}s{peak:>6} MiB")
+    print("\nWER* = sin tildes. frío = proceso nuevo por frase. cal = caliente (con --server, medido frase a frase; "
+          "si no, estimado como media).")
 
-    print(f"{'motor':<24}{'WER':>7}{'WER*':>7}{'frío p50':>10}{'frío p95':>10}{'caliente':>10}{'VRAM pico':>11}")
-    for name, w, wf, p50, p95, warm, peak in results:
-        print(f"{name:<24}{w:>7.1%}{wf:>7.1%}{p50:>9.2f}s{p95:>9.2f}s{warm:>9.2f}s{peak:>8} MiB")
-    print("\nWER* = sin tildes. frío = proceso nuevo por frase (carga + decodificación). caliente = por frase con el modelo ya cargado.")
+    for name, (per_phrase, hyps) in details.items():
+        worst = sorted((p for p in per_phrase if p[1]), key=lambda p: -p[1] / p[2])[:8]
+        if worst:
+            print(f"\n{name}: frases con errores → " + ", ".join(f"{rid} ({e}/{n})" for rid, e, n in worst))
+        if args.show:
+            refs = {rid: ref for rid, _, _, ref in items}
+            for (rid, e, _), hyp in zip(per_phrase, hyps):
+                if e:
+                    print(f"  {rid}  ref: {refs[rid]}\n      asr: {hyp}")
 
 
 if __name__ == "__main__":
