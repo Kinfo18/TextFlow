@@ -92,6 +92,20 @@ public sealed class LibraryHost : IAsyncDisposable
         return (import, ImportPreview.Of(import, Service.Current));
     }
 
+    /// <summary>
+    /// Reads a backup and builds the library with it added (a second aText library), without writing anything. Apply
+    /// the result with <see cref="ImportLibraryFileAsync"/>: a one-time import that stops following aText.
+    /// </summary>
+    /// <exception cref="IOException">The file cannot be read.</exception>
+    /// <exception cref="InvalidDataException">The file is not an aText backup.</exception>
+    public async Task<(LibraryGroup Root, ImportPreview Preview)> PreviewATextAppendAsync(string path, CancellationToken ct)
+    {
+        var import = await ReadAsync(path, ct).ConfigureAwait(false);
+        var current = Service.Current;
+        var merged = ATextMerge.Append(current, import.Root, Path.GetFileNameWithoutExtension(path), () => $"tf-g-{Guid.NewGuid():N}");
+        return (merged.Root, ImportPreview.OfAppend(import, current, merged));
+    }
+
     /// <summary>Applies a previewed backup (snapshot first) and follows that file from now on.</summary>
     public async Task UseATextSourceAsync(string path, ATextImport import, CancellationToken ct)
     {

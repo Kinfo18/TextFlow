@@ -16,7 +16,7 @@ internal static class ImportDialog
             XamlRoot = root,
             Title = title,
             Content = new ScrollViewer { Content = Report(preview, stopsFollowing), MaxHeight = 420 },
-            PrimaryButtonText = preview.ReplacesExisting ? "Reemplazar biblioteca" : "Importar",
+            PrimaryButtonText = preview.Appends ? "Añadir a la biblioteca" : preview.ReplacesExisting ? "Reemplazar biblioteca" : "Importar",
             CloseButtonText = "Cancelar",
             DefaultButton = ContentDialogButton.Primary,
         };
@@ -60,7 +60,23 @@ internal static class ImportDialog
             panel.Children.Add(Line(Capitalize(string.Join("; ", notes)) + "."));
         }
 
-        if (preview.ReplacesExisting)
+        if (preview.Appends)
+        {
+            panel.Children.Add(Heading("Frente a tu biblioteca actual"));
+            panel.Children.Add(Line(preview is { Added: 0, Changed: 0 }
+                ? "Sin cambios: todo esto ya está en tu biblioteca."
+                : $"{preview.Added} comandos nuevos · {preview.Changed} actualizados. No se elimina nada."));
+            panel.Children.Add(Line(
+                "Lo nuevo entra como un grupo al final de la lista. Los comandos que ya venían de este archivo toman la versión del archivo (si los cambiaste en TextFlow, esos cambios se reemplazan), y los que borraste vuelven.", subtle: true));
+            if (preview.AbbreviationClashes > 0)
+            {
+                panel.Children.Add(Line(
+                    $"{preview.AbbreviationClashes} comandos nuevos usan una abreviatura que ya existe: al escribirla sigue saliendo el que ya tenías. Se pueden usar desde el menú del grupo o cambiarles la abreviatura."));
+            }
+
+            panel.Children.Add(Line("Antes de añadir se guarda una copia de la biblioteca actual.", subtle: true));
+        }
+        else if (preview.ReplacesExisting)
         {
             panel.Children.Add(Heading("Frente a tu biblioteca actual"));
             panel.Children.Add(Line(preview is { Added: 0, Removed: 0, Changed: 0 }
@@ -72,7 +88,9 @@ internal static class ImportDialog
         if (stopsFollowing is not null)
         {
             panel.Children.Add(Line(
-                $"TextFlow dejará de importar los cambios de «{stopsFollowing}»: desde ahora esta copia es tu biblioteca.", subtle: true));
+                preview.Appends
+                    ? $"TextFlow dejará de importar los cambios de «{stopsFollowing}»: desde ahora tu biblioteca se edita aquí."
+                    : $"TextFlow dejará de importar los cambios de «{stopsFollowing}»: desde ahora esta copia es tu biblioteca.", subtle: true));
         }
 
         return panel;

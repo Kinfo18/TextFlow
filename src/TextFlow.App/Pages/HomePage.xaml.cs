@@ -225,6 +225,58 @@ public sealed partial class HomePage : Page, IRefreshable
         }
     }
 
+    /// <summary>
+    /// Adds one or more aText backups to the library, each confirmed on its own: nothing is removed, and aText is no
+    /// longer followed (the next change to the followed file would otherwise replace what was added).
+    /// </summary>
+    /// <remarks>async void: every failure is caught and shown on Inicio (an escaping exception freezes WinUI).</remarks>
+    private async void OnAppendLibrary(object sender, RoutedEventArgs e)
+    {
+        AppendLibraryItem.IsEnabled = false;
+        var added = 0;
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add(".atext");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, App.Current.MainWindowHandle);
+            var files = await picker.PickMultipleFilesAsync();
+            foreach (var path in files.Select(f => f.Path).Where(p => p.Length > 0))
+            {
+                if (App.Current.Library is not { } library)
+                {
+                    break;
+                }
+
+                var (root, preview) = await library.PreviewATextAppendAsync(path, CancellationToken.None);
+                var following = library.Status.SourcePath is { } source ? Path.GetFileName(source) : null;
+                if (await ImportDialog.ConfirmAsync(XamlRoot, $"Añadir «{Path.GetFileName(path)}»", preview, following))
+                {
+                    await App.Current.ImportLibraryFileAsync(root);
+                    added++;
+                }
+            }
+
+            _actionError = added switch
+            {
+                0 => null,
+                1 => "Biblioteca añadida.",
+                _ => $"{added} bibliotecas añadidas.",
+            };
+        }
+        catch (Exception ex)
+        {
+            _actionError = added > 0
+                ? $"No se pudo añadir el siguiente archivo (los {added} anteriores sí se añadieron): {ex.Message}"
+                : $"No se pudo añadir: {ex.Message}";
+            App.Current.RecordFault(ex);
+        }
+        finally
+        {
+            AppendLibraryItem.IsEnabled = true;
+            Refresh();
+        }
+    }
+
     /// <remarks>async void: every failure is caught and shown on Inicio (an escaping exception freezes WinUI).</remarks>
     private async void OnExportLibrary(object sender, RoutedEventArgs e)
     {

@@ -93,6 +93,10 @@
                                         <MenuFlyoutItem x:Name="ChooseLibraryItem" Text="Importar desde aText…" Click="OnChooseLibrary">
                                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="AppendLibraryItem" Text="Añadir otra biblioteca aText…" Click="OnAppendLibrary"
+                                                        ToolTipService.ToolTip="Suma uno o varios archivos .atext a tu biblioteca sin borrar nada">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE710;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                         <MenuFlyoutSeparator />
                                         <MenuFlyoutItem Text="Exportar biblioteca…" Click="OnExportLibrary">
                                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>

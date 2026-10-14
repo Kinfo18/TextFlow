@@ -14,6 +14,8 @@ namespace TextFlow.Core.Import;
 /// <param name="Added">Snippets (by id) in the backup but not in the current library.</param>
 /// <param name="Removed">Snippets in the current library that the import drops.</param>
 /// <param name="Changed">Snippets in both whose content, abbreviations, mode or enabled state differ.</param>
+/// <param name="Appends">The backup is added to the library (<see cref="ATextMerge"/>): nothing is removed.</param>
+/// <param name="AbbreviationClashes">Added snippets with an abbreviation the library already uses (the existing one keeps it).</param>
 public sealed record ImportPreview(
     LibrarySummary Incoming,
     int Groups,
@@ -24,8 +26,25 @@ public sealed record ImportPreview(
     bool ReplacesExisting,
     int Added,
     int Removed,
-    int Changed)
+    int Changed,
+    bool Appends = false,
+    int AbbreviationClashes = 0)
 {
+    /// <summary>What adding a backup (<paramref name="merged"/>, built from <paramref name="import"/>) to the library would do.</summary>
+    public static ImportPreview OfAppend(ATextImport import, LibraryGroup current, MergedLibrary merged)
+    {
+        ArgumentNullException.ThrowIfNull(merged);
+        return Of(import, current) with
+        {
+            ReplacesExisting = false,
+            Appends = true,
+            Added = merged.Added,
+            Changed = merged.Updated,
+            Removed = 0,
+            AbbreviationClashes = merged.AbbreviationClashes,
+        };
+    }
+
     public static ImportPreview Of(ATextImport import, LibraryGroup current)
     {
         ArgumentNullException.ThrowIfNull(import);
@@ -57,7 +76,8 @@ public sealed record ImportPreview(
                 shorter.Trigger,
                 shorter.IgnoreCase || longer.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)));
 
-    private static bool Differs(LibrarySnippet before, LibrarySnippet after) =>
+    /// <summary>The fields an import can change on a snippet that keeps its id.</summary>
+    internal static bool Differs(LibrarySnippet before, LibrarySnippet after) =>
         before.Content != after.Content
         || before.Name != after.Name
         || before.IsRichText != after.IsRichText

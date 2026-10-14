@@ -28,6 +28,9 @@ public static class ATextBackupReader
 
     private static readonly JsonDocumentOptions JsonOptions = new() { MaxDepth = 64 };
 
+    /// <summary>Id of the root made up for a backup with several top-level items; a single-group backup keeps that group's id.</summary>
+    public const string SyntheticRootId = "root";
+
     /// <param name="ignoreCase">aText's global "ignore case" setting, not stored per group in the backup.</param>
     public static ATextImport Read(Stream backup, bool ignoreCase = true)
     {
@@ -44,7 +47,7 @@ public static class ATextBackupReader
         var items = json.RootElement.EnumerateArray().ToArray();
         var root = items is [var single] && IsGroup(single)
             ? ReadGroup(single, ignoreCase, issues)
-            : new LibraryGroup("root", "aText", null, ignoreCase, items.Where(IsGroup).Select(g => ReadGroup(g, ignoreCase, issues)).ToArray(),
+            : new LibraryGroup(SyntheticRootId, "aText", null, ignoreCase, items.Where(IsGroup).Select(g => ReadGroup(g, ignoreCase, issues)).ToArray(),
                 items.Where(i => !IsGroup(i)).Select(s => ReadSnippet(s, issues)).ToArray());
 
         ReportDuplicateAbbreviations(root, issues);
