@@ -28,6 +28,7 @@ return command switch
     "menu" => await TextFlow.Spikes.MenuSpike.RunAsync(args.Skip(1).ToArray()),
     "focus" => TextFlow.Spikes.FocusProbe.Run(args.Skip(1).ToArray()),
     "stress" => await TextFlow.Spikes.StressRun.RunAsync(args.Skip(1).ToArray()),
+    "keys" => TextFlow.Spikes.KeyProbe.Run(args.Skip(1).ToArray()),
     _ => Help(),
 };
 
@@ -43,6 +44,7 @@ static int Help()
           import <archivo.atext>         Lee un backup de aText y muestra resumen e incidencias (S6)
           menu <archivo.atext> [vol]     Abreviaturas de grupo abren menú en el caret; vol 0-100 del chime (S7)
           stress [n]                     Con TextFlow en marcha: n expansiones reales en el editor enfocado (H6.1)
+          keys [s] [rctrl|f9|0xVK] [ms]  Qué ve el hook de cada tecla y qué haría el atajo de dictado (V0.2 H0.4)
         """);
     return 0;
 }
