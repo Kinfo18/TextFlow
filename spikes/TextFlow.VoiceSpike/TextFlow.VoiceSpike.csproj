@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- V0.2 H0.3 spike: whisper.cpp in-process through Whisper.net (CUDA 12 runtime) vs whisper-server.
+       Not in TextFlow.sln on purpose: the CUDA runtime alone copies ~1 GB into bin/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda12.Windows" Version="1.9.1" />
+  </ItemGroup>
+
+  <!-- The CUDA 12 runtime imports cudart64_12/cublas64_12 (and cublas loads cublasLt64_12). No CUDA Toolkit is
+       installed here, so take them from the whisper.cpp release zip already in models/ (fuera de git). -->
+  <PropertyGroup>
+    <CudaDllDir>$(MSBuildThisFileDirectory)..\..\models\whisper-cuda\Release\</CudaDllDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <CudaDll Include="$(CudaDllDir)cudart64_12.dll;$(CudaDllDir)cublas64_12.dll;$(CudaDllDir)cublasLt64_12.dll" />
+  </ItemGroup>
+  <Target Name="CopyCudaDlls" AfterTargets="Build" Condition="Exists('$(CudaDllDir)cudart64_12.dll')">
+    <Copy SourceFiles="@(CudaDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
