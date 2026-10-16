@@ -22,3 +22,6 @@ dist/
 
 # Content-free logs brought back from the work PC (H6.2)
 logs-trabajo/
+
+# Graphify knowledge graph (regenerable with `graphify update .`)
+graphify-out/
