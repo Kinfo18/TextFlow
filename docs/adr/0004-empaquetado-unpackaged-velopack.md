@@ -15,3 +15,5 @@ Compatible con `uiAccess=true` en V1 (inserción en apps elevadas: requiere firm
 - Origen de actualizaciones: GitHub Releases del repo público `Kinfo18/TextFlow`, sin token en la app. Busca 30 s después de arrancar y cada 6 h, descarga en segundo plano y espera al usuario ("Reiniciar y actualizar" en Inicio y en la bandeja). La copia portable (zip) y la de desarrollo no buscan actualizaciones.
 - Publicar: `build/publish-release.ps1 -Version x.y.z [-Upload]` (sube con `$env:TEXTFLOW_GITHUB_TOKEN`). Sin firma de código por ahora: SmartScreen avisa la primera vez.
 - La bandeja es nativa (`Shell_NotifyIcon`, H1.2), no H.NotifyIcon.
+- Voz (V0.2, 2026-10-17): el modelo y el paquete GPU no van en el instalador; se descargan a `%LOCALAPPDATA%\TextFlow`
+  al activar el dictado. Ver [ADR-0009](0009-integracion-motor-voz.md), sección H0.5.

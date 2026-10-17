@@ -65,8 +65,57 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
 ## Consecuencias
 - Descarga total la primera vez ≈ 1,2 GB (paquete GPU + modelo). Con la red de este PC, la reanudación no es opcional.
 - Confirmar en H0.5 que la licencia de NVIDIA permite redistribuir `cudart`, `cublas` y `cublasLt` (figuran como
-  redistribuibles en el EULA del CUDA Toolkit) y desde dónde se descargan.
+  redistribuibles en el EULA del CUDA Toolkit) y desde dónde se descargan. **Confirmado**, ver la sección H0.5.
 - Primer dictado tras arrancar el worker: ≈ 1,3 s extra (carga + calentamiento). Opciones para H1.3: precargar al
   iniciar la app o al pulsar el atajo; la liberación por inactividad la vuelve a pagar.
 - `TextFlow.VoiceWorker` es x64 y con .NET 10, como el spike; la app no referencia Whisper.net.
 - Volver a medir con el paquete real de H1 (audio de WASAPI en vez de WAV) para confirmar la latencia de punta a punta.
+
+## Distribución del modelo y del paquete GPU (V0.2 H0.5, 2026-10-17)
+
+### Datos
+| Pieza | Origen | Tamaño | Verificación | Licencia |
+|---|---|---|---|---|
+| Modelo `ggml-large-v3-turbo-q5_0.bin` | Hugging Face `ggerganov/whisper.cpp`, revisión fija `5359861c739e955e79d9a303bcbc70fb988958b1` | 574 041 195 B (547 MiB) | SHA-256 `394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2` (= LFS oid de HF = copia local de `models/`) | MIT (pesos de OpenAI Whisper) |
+| DLL de whisper.cpp con CUDA (`ggml-cuda-whisper.dll` 564 MB y 4 DLL pequeñas) | NuGet `Whisper.net.Runtime.Cuda12.Windows` 1.9.1 (nupkg 250 MB) | ≈ 566 MB | hash del nupkg en el catálogo de NuGet | MIT |
+| `cudart64_12.dll` | NVIDIA, `cuda_cudart` 12.4.127 (redist oficial, zip 2,5 MB) | 0,55 MB | SHA-256 en `redistrib_12.4.1.json` | EULA del CUDA Toolkit |
+| `cublas64_12.dll`, `cublasLt64_12.dll` | NVIDIA, `libcublas` 12.4.5.8 (redist oficial, zip 392 MB) | 574 MB | SHA-256 en `redistrib_12.4.1.json` | EULA del CUDA Toolkit |
+
+- **Licencia de NVIDIA:** el Anexo A del EULA del CUDA Toolkit lista como redistribuibles en Windows `cudart.dll`
+  (CUDA Runtime) y `cublas.dll`, `cublasLt.dll` (cuBLAS y cuBLASLt). Condiciones (§1.1.2): ir dentro de una
+  aplicación con "funcionalidad adicional material" (TextFlow lo es), que solo la use esa aplicación, y términos de
+  distribución coherentes con el EULA. **Se pueden redistribuir**; el paquete lleva el aviso de licencia de NVIDIA.
+- **Hugging Face** responde con un 302 a su CDN con URL **firmada y con caducidad**; admite `Range`. Para reanudar hay
+  que volver a pedir la URL de HF (no guardar la del CDN).
+- `release.yml` solo se dispara con tags `v*.*.*`: un tag de otra forma no genera instalador.
+
+### Decisión
+1. **Nada de voz en el instalador** salvo el runtime de CPU de Whisper.net (~1 MB) y el código del worker. Quien no
+   usa el dictado no descarga nada.
+2. **Modelo:** se descarga de Hugging Face con la **revisión fija** (no `main`) y el SHA-256 de arriba escritos en el
+   código, a `%LOCALAPPDATA%\TextFlow\models\ggml-large-v3-turbo-q5_0.bin`.
+3. **Paquete GPU:** **un zip propio** (`textflow-voz-cuda12-1.zip`, ≈ 620 MB) con las DLL de whisper.cpp CUDA de
+   Whisper.net 1.9.1 + `cudart64_12`, `cublas64_12`, `cublasLt64_12` (12.4) + los avisos de licencia (MIT de
+   Whisper.net/whisper.cpp y EULA de NVIDIA). Se publica como asset de un release propio del repo con tag
+   **`voz-gpu-1`** (prerelease, sin instalador), y lo construye **GitHub Actions** (workflow manual) bajando el nupkg
+   de NuGet y los zips oficiales de NVIDIA y verificando sus hashes: la red de este PC corta las subidas grandes.
+   Se instala en `%LOCALAPPDATA%\TextFlow\voz\cuda12-1\`, fuera de la carpeta de Velopack (cada actualización de la
+   app la sustituye entera y obligaría a bajarlo otra vez). El worker la pasa como `RuntimeOptions.LibraryPath`.
+   - Se descarta que la app baje las tres piezas de NuGet y NVIDIA directamente: tres orígenes, tres formatos, 650 MB
+     de archivos de los que se tiran cabeceras y `.lib`, y dependencia de URLs ajenas en cada instalación.
+   - El número `1` es la versión del paquete, independiente de la de la app: las actualizaciones de TextFlow no lo
+     vuelven a bajar mientras no cambie Whisper.net o CUDA.
+4. **Cuándo:** al activar el dictado por primera vez (Ajustes → Voz), no al arrancar. Solo se ofrece el paquete GPU si
+   hay una GPU NVIDIA con driver compatible con CUDA 12 (consulta en H1.4); sin ella, el dictado queda desactivado
+   hasta el respaldo en CPU de H4 (ADR-0007; Parakeet, ≈ 490 MB, se distribuiría igual que el modelo).
+5. **Descarga (H1.4):** a un `.part` con reanudación por `Range` y reintentos, verificación SHA-256 al terminar
+   (incorrecto → se borra y se avisa), y cambio de nombre atómico al final. Comprobar antes ≈ 2 GB libres (zip +
+   extracción + modelo). El paquete se extrae a una carpeta temporal y se renombra cuando todas las DLL están.
+6. **Desinstalar** no borra `%LOCALAPPDATA%\TextFlow` (ADR-0004), así que los ≈ 1,7 GB de voz se quedan:
+   Diagnóstico muestra el espacio usado y ofrece "Borrar archivos de voz".
+
+### Pendiente de verificar en H1
+- Que Velopack (`GithubSource`) ignora el release `voz-gpu-1` al buscar actualizaciones (no tiene `releases.*.json`
+  y es prerelease). Si no, mover el paquete a un repo aparte (`TextFlow-assets`).
+- Que `ggml-cuda-whisper.dll` encuentra `cudart`/`cublas` en su propia carpeta: si no, el worker llama a
+  `AddDllDirectory` con la carpeta del paquete antes de cargar el runtime.
