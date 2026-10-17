@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- V0.2 H1.1, ADR-0009: the voice engine runs in a process of its own, so a native crash in CUDA or whisper.cpp
+       never takes the expansion engine down. Started by TextFlow.exe (VoiceWorkerSupervisor), talks over a named pipe. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TextFlow.Contracts\TextFlow.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- WinExe: no console window when TextFlow starts it. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(WindowsTfm)</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RootNamespace>TextFlow.VoiceWorker</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TextFlow.Infrastructure.Tests" />
+  </ItemGroup>
+
+</Project>

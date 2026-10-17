@@ -10,7 +10,9 @@ using TextFlow.App.Palette;
 using TextFlow.App.Updates;
 using TextFlow.Core.Diagnostics;
 using TextFlow.Core.Input;
+using TextFlow.Core.Voice;
 using TextFlow.Infrastructure.Diagnostics;
+using TextFlow.Infrastructure.Voice;
 using TextFlow.Infrastructure.Windows;
 
 namespace TextFlow.App;
@@ -42,6 +44,8 @@ public partial class App : Application, IDisposable
     private PaletteWindow? _paletteWindow;
     private PaletteHost? _palette;
     private AppUpdater? _updater;
+    private NamedPipeVoiceWorkerLauncher? _voiceLauncher;
+    private VoiceWorkerSupervisor? _voice;
     private MainWindow? _window;
     private bool _exiting;
 
@@ -271,6 +275,7 @@ public partial class App : Application, IDisposable
 
         StartPauseHotkey(ui, tray);
         StartPalette();
+        StartVoice(sink);
 
         var updater = new AppUpdater(RecordFault);
         updater.UpdateReady += () => ui.TryEnqueue(() =>
@@ -283,6 +288,30 @@ public partial class App : Application, IDisposable
 
         // After the updater: only the installed copy may point the Run entry at itself on startup.
         ApplyStartWithWindows(_settings.StartWithWindows, takeOverOtherCopy: updater.IsInstalled);
+    }
+
+    /// <summary>V0.2 H1.1: keeps the voice worker process running while voice is on. It never blocks startup.</summary>
+    private void StartVoice(IDiagnosticSink sink)
+    {
+        if (!_settings.VoiceEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            _voiceLauncher = new NamedPipeVoiceWorkerLauncher();
+            _voice = new VoiceWorkerSupervisor(_voiceLauncher, sink);
+            _voice.Start();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            // Voice is optional: expansions start anyway.
+            RecordFault(ex);
+            _voiceLauncher?.Dispose();
+            _voiceLauncher = null;
+            _voice = null;
+        }
     }
 
     /// <summary>Palette shortcut as shown to the user, and whether Windows let TextFlow have it.</summary>
@@ -605,6 +634,13 @@ public partial class App : Application, IDisposable
             {
                 await _library.DisposeAsync();
             }
+
+            if (_voice is not null)
+            {
+                await _voice.DisposeAsync();
+            }
+
+            _voiceLauncher?.Dispose();
 
             if (_window is { } open)
             {

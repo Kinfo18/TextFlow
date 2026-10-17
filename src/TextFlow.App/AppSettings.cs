@@ -17,6 +17,7 @@ namespace TextFlow.App;
 /// <param name="Theme">Window theme (H3.1).</param>
 /// <param name="PaletteHotkey">Command palette shortcut (D11), e.g. "Ctrl+Shift+Alt+Space"; null or invalid uses the default.</param>
 /// <param name="Window">Where the main window was when it last closed; null opens it at the default size.</param>
+/// <param name="VoiceEnabled">Runs the voice worker (V0.2). Off until dictation is usable; no UI yet, edit settings.json.</param>
 public sealed record AppSettings(
     string? ATextBackupPath = null,
     double ChimeVolume = 1.0,
@@ -27,7 +28,8 @@ public sealed record AppSettings(
     int PrefixTimeoutMs = 600,
     IReadOnlyList<string>? ExcludedProcesses = null,
     string? PaletteHotkey = null,
-    WindowPlacement? Window = null)
+    WindowPlacement? Window = null,
+    bool VoiceEnabled = false)
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 

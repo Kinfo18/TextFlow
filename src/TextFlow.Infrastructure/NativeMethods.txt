@@ -108,3 +108,8 @@ IsIconic
 ShowWindow
 AttachThreadInput
 BringWindowToTop
+// Voice worker (job object: the worker dies with TextFlow)
+CreateJobObject
+SetInformationJobObject
+AssignProcessToJobObject
+JOBOBJECT_EXTENDED_LIMIT_INFORMATION

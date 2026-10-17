@@ -119,3 +119,25 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
   y es prerelease). Si no, mover el paquete a un repo aparte (`TextFlow-assets`).
 - Que `ggml-cuda-whisper.dll` encuentra `cudart`/`cublas` en su propia carpeta: si no, el worker llama a
   `AddDllDirectory` con la carpeta del paquete antes de cargar el runtime.
+
+## Implementación del worker (V0.2 H1.1, 2026-10-17)
+
+- **Proyectos:** mensajes y framing en `TextFlow.Contracts/Voice` (4 bytes de longitud + JSON UTF-8, tope 1 MB);
+  `VoiceWorkerSupervisor` en `TextFlow.Core/Voice`; lanzador y Job Object en `TextFlow.Infrastructure/Voice`;
+  `TextFlow.VoiceWorker.exe` (WinExe x64, solo referencia Contracts) junto a `TextFlow.exe`.
+- **Protocolo v1:** `hello` → `ready{versión, pid}`, `ping`/`pong`, `shutdown`. Solo control y texto: el audio se
+  captura dentro del worker (H1.2).
+- **Pipe:** lo crea la app, nombre `TextFlow.Voice.<pid>.<guid>` nuevo por cada worker y `PipeOptions.CurrentUserOnly`
+  en los dos lados. El worker se cierra si el pipe se cierra o si el proceso de TextFlow (`--parent`) desaparece.
+- **Job Object** con `KILL_ON_JOB_CLOSE`: si TextFlow muere de golpe, Windows mata el worker (y libera la VRAM).
+  Windows da código de salida 0 a los procesos que mata así.
+- **Vigilancia:** ping cada 10 s, sin respuesta en 3 s → colgado, se mata. Reinicio tras 0,5 s, doblando con cada caída
+  en 2 min hasta 30 s; 5 caídas en 2 min → `Faulted` hasta un nuevo `Start()`. Una petición en curso cuando el worker
+  cae falla con `VoiceWorkerUnavailableException`, nunca se queda colgada.
+- **Diagnóstico:** `VoiceWorkerStarted`, `VoiceWorkerExited` (motivo, código, tiempo arriba) y `VoiceWorkerFaulted`.
+- **Medido** (`TextFlow.Spikes voice-worker 3`, PC de desarrollo): arranque hasta `ready` 93–146 ms, ping 1–3 ms,
+  3 muertes → 3 reinicios.
+- **Distribución:** la app referencia el proyecto (lo copia junto a `TextFlow.exe` en cada build);
+  `publish-release.ps1` lo publica además self-contained en la misma carpeta, con el runtime del paquete
+  (el PC de trabajo no tiene .NET instalado).
+- **Apagado por defecto:** solo arranca con `"VoiceEnabled": true` en `settings.json` hasta que el dictado sirva (H2).

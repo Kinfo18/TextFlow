@@ -23,6 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TextFlow.Infrastructure\TextFlow.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\TextFlow.Core\TextFlow.Core.csproj" />
+    <!-- Voice tests start the real worker exe (V0.2 H1.1). -->
+    <ProjectReference Include="..\..\src\TextFlow.VoiceWorker\TextFlow.VoiceWorker.csproj" />
   </ItemGroup>
 
 </Project>

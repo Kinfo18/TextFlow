@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\src\TextFlow.Infrastructure\TextFlow.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\TextFlow.Core\TextFlow.Core.csproj" />
     <ProjectReference Include="..\..\src\TextFlow.Contracts\TextFlow.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\TextFlow.VoiceWorker\TextFlow.VoiceWorker.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

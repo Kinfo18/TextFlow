@@ -4,6 +4,8 @@
     <ProjectReference Include="..\TextFlow.Infrastructure\TextFlow.Infrastructure.csproj" />
     <ProjectReference Include="..\TextFlow.Core\TextFlow.Core.csproj" />
     <ProjectReference Include="..\TextFlow.Contracts\TextFlow.Contracts.csproj" />
+    <!-- Builds TextFlow.VoiceWorker.exe next to TextFlow.exe (V0.2 H1.1); the app only starts it, never loads its code. -->
+    <ProjectReference Include="..\TextFlow.VoiceWorker\TextFlow.VoiceWorker.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +41,8 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- Release builds pass the real one (build/publish-release.ps1). -->
     <Version>0.1.0</Version>
+    <!-- The worker is copied framework-dependent here; build/publish-release.ps1 publishes it self-contained over it. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
   </PropertyGroup>
 
 </Project>

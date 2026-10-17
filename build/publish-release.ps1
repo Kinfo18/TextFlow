@@ -34,6 +34,7 @@ $repoUrl = 'https://github.com/Kinfo18/TextFlow'
 $packId = 'TextFlowApp'
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'src\TextFlow.App\TextFlow.App.csproj'
+$workerProject = Join-Path $root 'src\TextFlow.VoiceWorker\TextFlow.VoiceWorker.csproj'
 $publishDir = Join-Path $root "dist\publish-v$Version"
 $releasesDir = Join-Path $root 'dist\releases'
 $icon = Join-Path $root 'src\TextFlow.App\Assets\TextFlow.ico'
@@ -56,8 +57,13 @@ try {
     dotnet publish $project -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:Version=$Version -o $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish falló ($LASTEXITCODE)." }
 
+    # V0.2 H1.1: the voice worker runs on the same self-contained runtime, next to TextFlow.exe. Published on its own
+    # because the app's project reference copies it framework-dependent (the work PC has no .NET installed).
+    dotnet publish $workerProject -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:Version=$Version -o $publishDir
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish del worker de voz falló ($LASTEXITCODE)." }
+
     # Without TextFlow.pri (compiled XAML) the tray works but the main window cannot load (H6, first work-PC run).
-    foreach ($required in 'TextFlow.exe', 'TextFlow.dll', 'TextFlow.pri', 'Microsoft.WindowsAppRuntime.dll', 'Assets\TextFlow.ico') {
+    foreach ($required in 'TextFlow.exe', 'TextFlow.dll', 'TextFlow.pri', 'TextFlow.VoiceWorker.exe', 'Microsoft.WindowsAppRuntime.dll', 'Assets\TextFlow.ico') {
         if (-not (Test-Path (Join-Path $publishDir $required))) {
             throw "Falta $required en la publicación: el paquete no funcionaría."
         }
