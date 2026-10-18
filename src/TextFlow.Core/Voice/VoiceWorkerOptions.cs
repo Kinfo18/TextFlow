@@ -11,6 +11,9 @@ public sealed record VoiceWorkerOptions
     /// <summary>A ping not answered in this time means the worker hung (a stuck CUDA call, for instance): it is killed.</summary>
     public TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>Longest wait for any other request (opening a microphone takes ~100 ms).</summary>
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
     /// <summary>How long a stopping worker may take to exit on its own before it is killed.</summary>
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(2);
 

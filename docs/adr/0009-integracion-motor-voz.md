@@ -141,3 +141,28 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
   `publish-release.ps1` lo publica además self-contained en la misma carpeta, con el runtime del paquete
   (el PC de trabajo no tiene .NET instalado).
 - **Apagado por defecto:** solo arranca con `"VoiceEnabled": true` en `settings.json` hasta que el dictado sirva (H2).
+
+## Captura del micrófono (V0.2 H1.2, 2026-10-17)
+
+- **NAudio.Wasapi 2.4.0** (MIT) en el worker: `WasapiCapture` en modo compartido pidiendo 16 kHz mono PCM16. Windows
+  remuestrea y mezcla a mono por su cuenta (`AUTOCONVERTPCM`): no hay resampler propio. Se descartaron NAudio 3.x
+  (reescritura de ago-2026; la 3.2.0 tenía 2 días) y WASAPI a mano por COM (≈ 400 líneas de interop propio).
+- **Protocolo v2:** peticiones con `id` y respuesta con el mismo `id` (`ErrorReply` con un código si falla).
+  `ListMicrophones`, `StartCapture{micId?}`, `StopCapture` → duración, nivel pico, recortado. Sin `micId` se usa el
+  micrófono predeterminado de Windows en ese momento.
+- **El audio no sale del worker** ni toca el disco: buffer en memoria de 60 s como máximo (≈ 1,9 MB). Se pone a cero al
+  parar mientras nadie lo consuma; en H2 se transcribe primero (ADR-0006).
+- **Errores:** sin micrófono, micrófono no encontrado, acceso denegado por la privacidad de Windows, no grabando.
+  Cualquier otra excepción de NAudio o del driver responde `Unknown` a esa petición: nunca tumba el worker.
+  Si el micrófono se pierde a mitad (desenchufado), `StopCapture` devuelve el audio hasta ese momento con
+  `MicrophoneLost`. Un `StartCapture` con otra captura abierta (un arranque que la app dio por perdido) la cierra y
+  descarta: el micrófono nunca queda abierto por una respuesta perdida. Las tramas se escriben siempre enteras (sin
+  cancelar a mitad), para no desincronizar el pipe.
+- **Medido** (PC de desarrollo, micrófono del portátil Intel Smart Sound, `TextFlow.Spikes voice-capture 5`):
+  5 s → 5008 ms y 4998 ms capturados (la diferencia con el reloj, −26 a −41 ms, es el arranque del stream). Abrir el
+  micrófono: **≈ 110 ms**; la **primera vez** en cada worker **400–570 ms** (Windows inicializa su motor de audio).
+- **Para H2:** el micro se abre al empezar el dictado (Windows solo muestra el icono de micrófono mientras graba). Con
+  el atajo empezando a 150 ms, el audio arranca unos 260 ms después de pulsar la tecla, y la primera vez casi 0,7 s.
+  Opciones: abrir el micro al pulsar la tecla (antes de los 150 ms) y descartarlo si fue un toque, y calentar el motor
+  de audio cuando arranca el worker sin abrir el micrófono. Medirlo con la tecla real.
+- La elección de micrófono en la configuración llega con la pantalla de voz (H2); el protocolo ya la admite.

@@ -89,7 +89,8 @@ internal sealed record WorkerScript(
     bool AnswerHello = true,
     int ProtocolVersion = VoiceProtocol.Version,
     bool AnswerPings = true,
-    bool ObeyShutdown = true);
+    bool ObeyShutdown = true,
+    VoiceErrorCode? CaptureError = null);
 
 /// <summary>A scripted worker on the other end of an in-memory pipe.</summary>
 internal sealed class FakeWorker : IVoiceWorkerConnection
@@ -155,9 +156,21 @@ internal sealed class FakeWorker : IVoiceWorkerConnection
                     case HelloMessage when Script.AnswerHello:
                         await VoiceFrame.WriteAsync(_worker, new ReadyMessage(Script.ProtocolVersion, ProcessId), CancellationToken.None);
                         break;
-                    case PingMessage ping when Script.AnswerPings:
+                    case PingRequest ping when Script.AnswerPings:
                         PingsAnswered++;
-                        await VoiceFrame.WriteAsync(_worker, new PongMessage(ping.Id), CancellationToken.None);
+                        await VoiceFrame.WriteAsync(_worker, new PongReply(ping.Id), CancellationToken.None);
+                        break;
+                    case ListMicrophonesRequest list:
+                        await VoiceFrame.WriteAsync(_worker, new MicrophonesReply(list.Id, [new MicrophoneInfo("m1", "Fake mic", true)]), CancellationToken.None);
+                        break;
+                    case StartCaptureRequest start:
+                        await VoiceFrame.WriteAsync(
+                            _worker,
+                            Script.CaptureError is { } code ? new ErrorReply(start.Id, code) : new CaptureStartedReply(start.Id, "Fake mic"),
+                            CancellationToken.None);
+                        break;
+                    case StopCaptureRequest stop:
+                        await VoiceFrame.WriteAsync(_worker, new CaptureStoppedReply(stop.Id, 1000, 0.5, false), CancellationToken.None);
                         break;
                     case ShutdownMessage:
                         GotShutdown = true;

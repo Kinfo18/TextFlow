@@ -288,6 +288,40 @@ public sealed class VoiceWorkerSupervisorTests : IAsyncDisposable
         await _supervisor.PingAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task CaptureRequests_RoundTripToTheWorker()
+    {
+        _supervisor.Start();
+        await ReadyAsync(launches: 1);
+
+        var microphones = await _supervisor.ListMicrophonesAsync(CancellationToken.None);
+        var name = await _supervisor.StartCaptureAsync(null, CancellationToken.None);
+        var stopped = await _supervisor.StopCaptureAsync(CancellationToken.None);
+
+        Assert.Equal("Fake mic", Assert.Single(microphones).Name);
+        Assert.Equal("Fake mic", name);
+        Assert.Equal(1000, stopped.DurationMs);
+    }
+
+    [Fact]
+    public async Task WorkerErrorReply_IsARequestException_WithItsCode()
+    {
+        _launcher.DefaultScript = new WorkerScript(CaptureError: VoiceErrorCode.MicrophoneAccessDenied);
+        _supervisor.Start();
+        await ReadyAsync(launches: 1);
+
+        var error = await Assert.ThrowsAsync<VoiceRequestException>(() => _supervisor.StartCaptureAsync(null, CancellationToken.None));
+
+        Assert.Equal(VoiceErrorCode.MicrophoneAccessDenied, error.Code);
+        await _supervisor.PingAsync(CancellationToken.None); // a refused request does not end the worker
+    }
+
+    [Fact]
+    public async Task CaptureRequest_BeforeStart_IsUnavailable()
+    {
+        await Assert.ThrowsAsync<VoiceWorkerUnavailableException>(() => _supervisor.StartCaptureAsync(null, CancellationToken.None));
+    }
+
     private async Task ReadyAsync(int launches)
     {
         await Eventually.TrueAsync(

@@ -20,4 +20,8 @@
     <InternalsVisibleTo Include="TextFlow.Infrastructure.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="2.4.0" />
+  </ItemGroup>
+
 </Project>

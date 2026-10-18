@@ -123,7 +123,36 @@ public sealed class VoiceWorkerSupervisor : IAsyncDisposable
         return session.PingAsync(_options.HeartbeatTimeout, cancellationToken);
     }
 
+    /// <summary>Active recording devices, as the worker sees them now.</summary>
+    /// <exception cref="VoiceWorkerUnavailableException">Not running, or it went away while waiting.</exception>
+    public async Task<IReadOnlyList<MicrophoneInfo>> ListMicrophonesAsync(CancellationToken cancellationToken)
+    {
+        var reply = await RequestAsync<MicrophonesReply>(id => new ListMicrophonesRequest(id), cancellationToken).ConfigureAwait(false);
+        return reply.Microphones;
+    }
+
+    /// <summary>Opens the microphone (null: Windows' default now) and returns its name.</summary>
+    /// <exception cref="VoiceRequestException">No microphone, access denied, already capturing…</exception>
+    public async Task<string> StartCaptureAsync(string? microphoneId, CancellationToken cancellationToken)
+    {
+        var reply = await RequestAsync<CaptureStartedReply>(id => new StartCaptureRequest(id, microphoneId), cancellationToken)
+            .ConfigureAwait(false);
+        return reply.MicrophoneName;
+    }
+
+    /// <summary>Closes the microphone; the audio stays in the worker.</summary>
+    /// <exception cref="VoiceRequestException">Not capturing, or the microphone was lost while recording.</exception>
+    public Task<CaptureStoppedReply> StopCaptureAsync(CancellationToken cancellationToken) =>
+        RequestAsync<CaptureStoppedReply>(id => new StopCaptureRequest(id), cancellationToken);
+
     public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
+
+    private Task<TReply> RequestAsync<TReply>(Func<long, VoiceRequest> create, CancellationToken cancellationToken)
+        where TReply : VoiceReply
+    {
+        var session = Volatile.Read(ref _session) ?? throw new VoiceWorkerUnavailableException();
+        return session.RequestAsync<TReply>(create, _options.RequestTimeout, cancellationToken);
+    }
 
     private async Task RunAsync(CancellationToken stop)
     {

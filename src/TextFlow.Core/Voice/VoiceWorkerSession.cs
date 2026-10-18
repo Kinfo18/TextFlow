@@ -12,8 +12,8 @@ internal sealed class VoiceWorkerSession : IDisposable
     private readonly Stream _stream;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private readonly ConcurrentDictionary<long, TaskCompletionSource> _pendingPings = new();
-    private long _nextPingId;
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<VoiceReply>> _pending = new();
+    private long _nextRequestId;
 
     private VoiceWorkerSession(Stream stream, TimeProvider time)
     {
@@ -64,26 +64,40 @@ internal sealed class VoiceWorkerSession : IDisposable
     /// <exception cref="VoiceWorkerUnavailableException">The session ended before the pong.</exception>
     public async Task<TimeSpan> PingAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
+        var started = _time.GetTimestamp();
+        await RequestAsync<PongReply>(id => new PingRequest(id), timeout, cancellationToken).ConfigureAwait(false);
+        return _time.GetElapsedTime(started);
+    }
+
+    /// <summary>Sends the request built from a fresh id and waits for the reply with that id.</summary>
+    /// <exception cref="VoiceRequestException">The worker answered with an <see cref="ErrorReply"/>.</exception>
+    /// <exception cref="TimeoutException">No reply in <paramref name="timeout"/>.</exception>
+    /// <exception cref="VoiceWorkerUnavailableException">The session ended before the reply.</exception>
+    /// <exception cref="InvalidDataException">The worker answered with another kind of reply.</exception>
+    public async Task<TReply> RequestAsync<TReply>(
+        Func<long, VoiceRequest> create, TimeSpan timeout, CancellationToken cancellationToken)
+        where TReply : VoiceReply
+    {
+        ArgumentNullException.ThrowIfNull(create);
         if (Completion.IsCompleted)
         {
             throw new VoiceWorkerUnavailableException();
         }
 
-        var id = Interlocked.Increment(ref _nextPingId);
-        var pong = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingPings[id] = pong;
-        if (Completion.IsCompleted) // the read loop may have ended (and failed the pending pings) just before the insert
+        var id = Interlocked.Increment(ref _nextRequestId);
+        var reply = new TaskCompletionSource<VoiceReply>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pending[id] = reply;
+        if (Completion.IsCompleted) // the read loop may have ended (and failed the pending requests) just before the insert
         {
-            _pendingPings.TryRemove(id, out _);
+            _pending.TryRemove(id, out _);
             throw new VoiceWorkerUnavailableException();
         }
 
-        var started = _time.GetTimestamp();
+        VoiceReply answer;
         try
         {
-            await SendAsync(new PingMessage(id), cancellationToken).ConfigureAwait(false);
-            await pong.Task.WaitAsync(timeout, _time, cancellationToken).ConfigureAwait(false);
-            return _time.GetElapsedTime(started);
+            await SendAsync(create(id), cancellationToken).ConfigureAwait(false);
+            answer = await reply.Task.WaitAsync(timeout, _time, cancellationToken).ConfigureAwait(false);
         }
         catch (IOException ex)
         {
@@ -91,8 +105,15 @@ internal sealed class VoiceWorkerSession : IDisposable
         }
         finally
         {
-            _pendingPings.TryRemove(id, out _);
+            _pending.TryRemove(id, out _);
         }
+
+        return answer switch
+        {
+            TReply expected => expected,
+            ErrorReply error => throw new VoiceRequestException(error.Code),
+            _ => throw new InvalidDataException($"Expected {typeof(TReply).Name}, got {answer.GetType().Name}."),
+        };
     }
 
     /// <exception cref="IOException">The pipe is broken or the session was disposed.</exception>
@@ -109,7 +130,8 @@ internal sealed class VoiceWorkerSession : IDisposable
 
         try
         {
-            await VoiceFrame.WriteAsync(_stream, message, cancellationToken).ConfigureAwait(false);
+            // Never cancelled once started: half a frame on the pipe would desync the worker for good.
+            await VoiceFrame.WriteAsync(_stream, message, CancellationToken.None).ConfigureAwait(false);
         }
         catch (ObjectDisposedException ex)
         {
@@ -137,9 +159,9 @@ internal sealed class VoiceWorkerSession : IDisposable
         {
             while (await VoiceFrame.ReadAsync(_stream, CancellationToken.None).ConfigureAwait(false) is { } message)
             {
-                if (message is PongMessage pong && _pendingPings.TryGetValue(pong.Id, out var waiting))
+                if (message is VoiceReply reply && _pending.TryGetValue(reply.Id, out var waiting))
                 {
-                    waiting.TrySetResult();
+                    waiting.TrySetResult(reply);
                 }
             }
         }
@@ -152,13 +174,39 @@ internal sealed class VoiceWorkerSession : IDisposable
             // Pipe broken or closed under us: the process is gone or being killed.
         }
 
-        foreach (var waiting in _pendingPings.Values)
+        foreach (var waiting in _pending.Values)
         {
             waiting.TrySetException(new VoiceWorkerUnavailableException());
         }
 
         return reason;
     }
+}
+
+/// <summary>The worker could not do what was asked; <see cref="Code"/> says why (no microphone, access denied…).</summary>
+public sealed class VoiceRequestException : Exception
+{
+    public VoiceRequestException()
+    {
+    }
+
+    public VoiceRequestException(VoiceErrorCode code)
+        : base($"The voice worker refused the request: {code}.")
+    {
+        Code = code;
+    }
+
+    public VoiceRequestException(string message)
+        : base(message)
+    {
+    }
+
+    public VoiceRequestException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    public VoiceErrorCode Code { get; }
 }
 
 /// <summary>The worker connected but the hello/ready exchange failed.</summary>

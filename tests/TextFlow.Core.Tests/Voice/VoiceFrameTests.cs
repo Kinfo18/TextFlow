@@ -10,10 +10,42 @@ public class VoiceFrameTests
     [
         new HelloMessage(VoiceProtocol.Version),
         new ReadyMessage(VoiceProtocol.Version, 4242),
-        new PingMessage(long.MaxValue),
-        new PongMessage(7),
+        new PingRequest(long.MaxValue),
+        new PongReply(7),
         new ShutdownMessage(),
+        new ListMicrophonesRequest(3),
+        new StartCaptureRequest(4, null),
+        new StartCaptureRequest(5, "{0.0.1.00000000}.{guid}"),
+        new CaptureStartedReply(4, "Micrófono (Realtek)"),
+        new StopCaptureRequest(6),
+        new CaptureStoppedReply(6, 5012.5, 0.42, true),
+        new CaptureStoppedReply(8, 300, 0.1, false, MicrophoneLost: true),
+        new ErrorReply(7, VoiceErrorCode.MicrophoneAccessDenied),
     ];
+
+    [Fact]
+    public async Task MicrophoneList_RoundTrips()
+    {
+        using var stream = new MemoryStream();
+        MicrophoneInfo[] microphones = [new("a", "Portátil", true), new("b", "USB", false)];
+
+        await VoiceFrame.WriteAsync(stream, new MicrophonesReply(9, microphones), CancellationToken.None);
+        stream.Position = 0;
+        var read = Assert.IsType<MicrophonesReply>(await VoiceFrame.ReadAsync(stream, CancellationToken.None));
+
+        Assert.Equal(9, read.Id);
+        Assert.Equal(microphones, read.Microphones);
+    }
+
+    [Fact]
+    public async Task ErrorCodes_TravelByName_SoReorderingTheEnumIsSafe()
+    {
+        using var stream = new MemoryStream();
+
+        await VoiceFrame.WriteAsync(stream, new ErrorReply(1, VoiceErrorCode.NotCapturing), CancellationToken.None);
+
+        Assert.Contains("\"NotCapturing\"", Encoding.UTF8.GetString(stream.ToArray()), StringComparison.Ordinal);
+    }
 
     [Theory]
     [MemberData(nameof(Messages))]
@@ -32,12 +64,12 @@ public class VoiceFrameTests
     public async Task SeveralFrames_ReadInOrder_ThenNullAtEndOfStream()
     {
         using var stream = new MemoryStream();
-        await VoiceFrame.WriteAsync(stream, new PingMessage(1), CancellationToken.None);
-        await VoiceFrame.WriteAsync(stream, new PingMessage(2), CancellationToken.None);
+        await VoiceFrame.WriteAsync(stream, new PingRequest(1), CancellationToken.None);
+        await VoiceFrame.WriteAsync(stream, new PingRequest(2), CancellationToken.None);
         stream.Position = 0;
 
-        Assert.Equal(new PingMessage(1), await VoiceFrame.ReadAsync(stream, CancellationToken.None));
-        Assert.Equal(new PingMessage(2), await VoiceFrame.ReadAsync(stream, CancellationToken.None));
+        Assert.Equal(new PingRequest(1), await VoiceFrame.ReadAsync(stream, CancellationToken.None));
+        Assert.Equal(new PingRequest(2), await VoiceFrame.ReadAsync(stream, CancellationToken.None));
         Assert.Null(await VoiceFrame.ReadAsync(stream, CancellationToken.None));
     }
 
@@ -45,7 +77,7 @@ public class VoiceFrameTests
     public async Task StreamCutInsideAFrame_IsInvalidData()
     {
         using var whole = new MemoryStream();
-        await VoiceFrame.WriteAsync(whole, new PingMessage(1), CancellationToken.None);
+        await VoiceFrame.WriteAsync(whole, new PingRequest(1), CancellationToken.None);
         using var cut = new MemoryStream(whole.ToArray()[..^2]);
 
         await Assert.ThrowsAsync<InvalidDataException>(() => VoiceFrame.ReadAsync(cut, CancellationToken.None));
