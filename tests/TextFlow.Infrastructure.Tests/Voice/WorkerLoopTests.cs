@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using TextFlow.Contracts.Voice;
 using TextFlow.VoiceWorker;
 using TextFlow.VoiceWorker.Audio;
+using TextFlow.VoiceWorker.Speech;
 
 namespace TextFlow.Infrastructure.Tests.Voice;
 
@@ -9,6 +10,7 @@ namespace TextFlow.Infrastructure.Tests.Voice;
 public sealed class WorkerLoopTests : IAsyncDisposable
 {
     private readonly FakeMicrophones _microphones = new();
+    private readonly FakeSpeechModels _models = new();
     private readonly CaptureBuffer _buffer = new(capacitySamples: 16000);
     private readonly AnonymousPipeServerStream _toWorker = new(PipeDirection.Out);
     private readonly AnonymousPipeServerStream _toApp = new(PipeDirection.Out);
@@ -22,7 +24,7 @@ public sealed class WorkerLoopTests : IAsyncDisposable
     {
         _workerSide = new Duplex(new AnonymousPipeClientStream(PipeDirection.In, _toWorker.ClientSafePipeHandle), _toApp);
         _appSide = new Duplex(new AnonymousPipeClientStream(PipeDirection.In, _toApp.ClientSafePipeHandle), _toWorker);
-        _loop = new WorkerLoop(_workerSide, _microphones, _buffer);
+        _loop = new WorkerLoop(_workerSide, _microphones, _models, _buffer);
         _running = Task.Run(() => _loop.RunAsync(CancellationToken.None));
     }
 
@@ -32,6 +34,7 @@ public sealed class WorkerLoopTests : IAsyncDisposable
         await _running.WaitAsync(TimeSpan.FromSeconds(5));
         _loop.Dispose();
         _workerSide.Dispose();
+        _models.Dispose();
     }
 
     [Fact]
@@ -154,6 +157,115 @@ public sealed class WorkerLoopTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task LoadModel_ReportsTheRuntimeAndTimes()
+    {
+        await HelloAsync();
+
+        var reply = Assert.IsType<ModelLoadedReply>(await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", @"C:\pack")));
+
+        Assert.Equal(("Cuda12", 700.0, 400.0, false), (reply.Runtime, reply.LoadMs, reply.WarmupMs, reply.WasLoaded));
+        Assert.Equal(("turbo.bin", @"C:\pack"), _models.LastRequest);
+    }
+
+    [Fact]
+    public async Task LoadModel_Again_IsAnsweredAsLoaded_WithoutLoadingTwice()
+    {
+        await HelloAsync();
+        await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null));
+
+        var again = Assert.IsType<ModelLoadedReply>(await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null)));
+
+        Assert.True(again.WasLoaded);
+        Assert.Equal(1, _models.Loads);
+    }
+
+    [Fact]
+    public async Task Pings_AreAnswered_WhileTheModelLoads()
+    {
+        await HelloAsync();
+        _models.Hold();
+
+        await VoiceFrame.WriteAsync(_appSide, new LoadModelRequest(++_nextId, "turbo.bin", null), CancellationToken.None);
+        var loadId = _nextId;
+        var pong = await RequestAsync(id => new PingRequest(id));
+
+        Assert.IsType<PongReply>(pong);
+        _models.Release();
+        var loaded = Assert.IsType<ModelLoadedReply>(await ReadAsync());
+        Assert.Equal(loadId, loaded.Id);
+    }
+
+    [Fact]
+    public async Task SecondLoad_WhileLoading_JoinsTheSameLoad()
+    {
+        await HelloAsync();
+        _models.Hold();
+
+        await VoiceFrame.WriteAsync(_appSide, new LoadModelRequest(1, "turbo.bin", null), CancellationToken.None);
+        await VoiceFrame.WriteAsync(_appSide, new LoadModelRequest(2, "turbo.bin", null), CancellationToken.None);
+        await Task.Delay(50);
+        _models.Release();
+        var replies = new[] { await ReadAsync(), await ReadAsync() }.Cast<ModelLoadedReply>().OrderBy(r => r.Id).ToArray();
+
+        Assert.Equal(1, _models.Loads);
+        Assert.Equal([false, true], replies.Select(r => r.WasLoaded));
+    }
+
+    [Theory]
+    [InlineData(VoiceErrorCode.ModelNotFound)]
+    [InlineData(VoiceErrorCode.NoGpu)]
+    [InlineData(VoiceErrorCode.ModelLoadFailed)]
+    public async Task ModelFailure_IsAnErrorReply_AndALaterLoadTriesAgain(VoiceErrorCode code)
+    {
+        await HelloAsync();
+        _models.FailWith = code;
+
+        var error = Assert.IsType<ErrorReply>(await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null)));
+        _models.FailWith = null;
+        var retry = await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null));
+
+        Assert.Equal(code, error.Code);
+        Assert.False(Assert.IsType<ModelLoadedReply>(retry).WasLoaded);
+    }
+
+    [Fact]
+    public async Task UnexpectedLoadException_IsAnUnknownError_AndTheWorkerKeepsServing()
+    {
+        await HelloAsync();
+        _models.Throw = new InvalidOperationException("native boom");
+
+        var error = Assert.IsType<ErrorReply>(await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null)));
+
+        Assert.Equal(VoiceErrorCode.Unknown, error.Code);
+        Assert.IsType<PongReply>(await RequestAsync(id => new PingRequest(id)));
+    }
+
+    [Fact]
+    public async Task AnotherModelFile_FreesTheOldOne_AndLoadsTheNew()
+    {
+        await HelloAsync();
+        await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null));
+        var old = _models.Current!;
+
+        var reply = Assert.IsType<ModelLoadedReply>(await RequestAsync(id => new LoadModelRequest(id, "small.bin", null)));
+
+        Assert.False(reply.WasLoaded);
+        Assert.True(old.Disposed);
+        Assert.Equal(2, _models.Loads);
+    }
+
+    [Fact]
+    public async Task Dispose_FreesTheLoadedModel()
+    {
+        await HelloAsync();
+        await RequestAsync(id => new LoadModelRequest(id, "turbo.bin", null));
+
+        _loop.Dispose();
+
+        Assert.True(_models.Current!.Disposed);
+    }
+
+    [Fact]
     public async Task Shutdown_EndsTheLoopCleanly()
     {
         await HelloAsync();
@@ -256,6 +368,61 @@ public sealed class WorkerLoopTests : IAsyncDisposable
         }
 
         public void Hear(byte[] pcm) => _buffer!.WritePcm16(pcm);
+    }
+
+    private sealed class FakeSpeechModels : ISpeechModels, IDisposable
+    {
+        private readonly ManualResetEventSlim _open = new(initialState: true);
+        private int _loads;
+
+        public VoiceErrorCode? FailWith { get; set; }
+
+        public Exception? Throw { get; set; }
+
+        public int Loads => Volatile.Read(ref _loads);
+
+        public (string Model, string? Pack) LastRequest { get; private set; }
+
+        public FakeModel? Current { get; private set; }
+
+        /// <summary>Loads block until <see cref="Release"/>, like a model that takes a while.</summary>
+        public void Hold() => _open.Reset();
+
+        public void Release() => _open.Set();
+
+        public void Dispose() => _open.Dispose();
+
+        public ILoadedSpeechModel Load(string modelPath, string? gpuPackPath)
+        {
+            _open.Wait(TimeSpan.FromSeconds(5));
+            LastRequest = (modelPath, gpuPackPath);
+            if (FailWith is { } code)
+            {
+                throw new SpeechModelException(code);
+            }
+
+            if (Throw is { } error)
+            {
+                throw error;
+            }
+
+            Interlocked.Increment(ref _loads);
+            Current = new FakeModel();
+            return Current;
+        }
+    }
+
+    private sealed class FakeModel : ILoadedSpeechModel
+    {
+        public string Runtime => "Cuda12";
+
+        public double LoadMs => 700;
+
+        public double WarmupMs => 400;
+
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class FakeCapture(string name) : IMicrophoneCapture

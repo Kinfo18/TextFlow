@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO.Pipes;
 using TextFlow.Contracts.Voice;
 using TextFlow.VoiceWorker.Audio;
+using TextFlow.VoiceWorker.Speech;
 
 namespace TextFlow.VoiceWorker;
 
@@ -54,7 +55,7 @@ internal static class WorkerHost
             return WorkerExitCode.ParentGone;
         }
 
-        using var loop = new WorkerLoop(pipe, new WasapiMicrophones());
+        using var loop = new WorkerLoop(pipe, new WasapiMicrophones(), new WhisperSpeechModels());
         return await loop.RunAsync(parentGone.Token).ConfigureAwait(false);
     }
 

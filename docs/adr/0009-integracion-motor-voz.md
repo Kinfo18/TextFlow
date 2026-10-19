@@ -118,7 +118,8 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
 - Que Velopack (`GithubSource`) ignora el release `voz-gpu-1` al buscar actualizaciones (no tiene `releases.*.json`
   y es prerelease). Si no, mover el paquete a un repo aparte (`TextFlow-assets`).
 - Que `ggml-cuda-whisper.dll` encuentra `cudart`/`cublas` en su propia carpeta: si no, el worker llama a
-  `AddDllDirectory` con la carpeta del paquete antes de cargar el runtime.
+  `AddDllDirectory` con la carpeta del paquete antes de cargar el runtime. **Resuelto en H1.3:** `cublas` sí se
+  encuentra; `cudart` no (ver la sección H1.3).
 
 ## Implementación del worker (V0.2 H1.1, 2026-10-17)
 
@@ -166,3 +167,36 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
   Opciones: abrir el micro al pulsar la tecla (antes de los 150 ms) y descartarlo si fue un toque, y calentar el motor
   de audio cuando arranca el worker sin abrir el micrófono. Medirlo con la tecla real.
 - La elección de micrófono en la configuración llega con la pantalla de voz (H2); el protocolo ya la admite.
+
+## Carga y liberación del modelo (V0.2 H1.3, 2026-10-18)
+
+- **Protocolo v3:** `LoadModel{modelPath, gpuPackPath?}` → `ModelLoaded{runtime, loadMs, warmupMs, wasLoaded}`.
+  Errores nuevos: `ModelNotFound`, `ModelLoadFailed`, `NoGpu` (solo cargó el runtime de CPU: turbo en CPU tarda
+  23–27 s por frase, así que se rechaza). La carga incluye un **calentamiento** (1 s de silencio) para que el primer
+  dictado no pague el arranque de los kernels de CUDA.
+- **El worker sigue respondiendo mientras carga:** la carga va en el pool de hilos y responde al terminar; los pings
+  y la captura siguen. Dos peticiones a la vez esperan la misma carga. Las tramas se escriben de una en una (lock).
+- **Cuándo se carga:** al primer dictado (`VoiceWorkerSupervisor.EnsureModelAsync`), no al arrancar la app. H2 puede
+  pedirla al pulsar la tecla, en paralelo con la apertura del micrófono.
+- **Liberar = cambiar de worker.** Medido (RTX 2050, base 682 MiB): con el modelo cargado 1 303 MiB; liberando
+  `WhisperFactory` dentro del proceso quedan **755 MiB** (el contexto de CUDA, ~70 MiB) y ~710 MB de RAM privada.
+  No vuelve a la base, así que tras **15 min sin uso** (`ModelIdleTimeout`) el supervisor cierra el worker con
+  `shutdown` y arranca otro limpio al momento, sin modelo. No cuenta como caída (`VoiceWorkerExited` con motivo
+  `ModelIdle`). El tiempo cuenta desde la última petición terminada y nunca corre con una petición en curso.
+- **Recarga transparente:** una petición que llega mientras el worker se está cambiando (o justo tras `Start()`)
+  espera al nuevo en lugar de fallar; el siguiente `EnsureModelAsync` vuelve a cargar.
+- **Carga colgada:** sin respuesta en 60 s (`ModelLoadTimeout`) se mata el worker como colgado y se reinicia.
+- **Diagnóstico:** `VoiceModelLoaded` (runtime, carga, calentamiento) y `VoiceModelLoadFailed` (código o timeout).
+- **Cómo encuentra Whisper.net el paquete GPU** (pendiente de H0.5, probado): `RuntimeOptions.LibraryPath` se toma
+  como un *archivo*: Whisper.net busca `runtimes\cuda12\win-x64\` en la carpeta de ese archivo. Y comprueba CUDA
+  cargando `cudart64_12` **por nombre**, que Windows no busca en esa carpeta: sin más, cae a CPU en silencio. El worker
+  carga antes `cudart64_12.dll` por ruta completa y pone `LibraryPath = <paquete>\whisper.dll`. `cublas64_12` y
+  `cublasLt64_12` sí se encuentran junto a `ggml-cuda-whisper.dll`. Por tanto el **zip `voz-gpu-1` lleva todas las
+  DLL en `runtimes\cuda12\win-x64\`** (las 5 de Whisper.net + `cudart`, `cublas`, `cublasLt`), más los avisos de
+  licencia en la raíz.
+- **El runtime se elige una vez por proceso** (la primera carga). Si se instala el paquete GPU con el worker ya
+  arrancado (H1.4), hay que cambiar de worker antes de cargar.
+- **Medido** (`TextFlow.Spikes voice-model 20`, PC de desarrollo, GPU libre): primera carga **2,6 s** desde el arranque
+  del worker (carga 1,6 s con el disco frío + calentamiento 0,6 s); segunda petición 0 ms; liberación a los 21 s de
+  inactividad con la VRAM **exactamente en la base** (690 → 1 310 → 690 MiB); recarga **1,2 s** (0,7 + 0,5).
+- En el instalador solo va el runtime de CPU de Whisper.net (~2 MB por arquitectura en `runtimes\win-*`).

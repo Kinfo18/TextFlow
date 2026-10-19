@@ -19,6 +19,8 @@ namespace TextFlow.Contracts.Voice;
 [JsonDerivedType(typeof(CaptureStartedReply), "capture-started")]
 [JsonDerivedType(typeof(StopCaptureRequest), "stop-capture")]
 [JsonDerivedType(typeof(CaptureStoppedReply), "capture-stopped")]
+[JsonDerivedType(typeof(LoadModelRequest), "load-model")]
+[JsonDerivedType(typeof(ModelLoadedReply), "model-loaded")]
 [JsonDerivedType(typeof(ErrorReply), "error")]
 public abstract record VoiceMessage;
 
@@ -72,6 +74,23 @@ public sealed record StopCaptureRequest(long Id) : VoiceRequest(Id);
 public sealed record CaptureStoppedReply(long Id, double DurationMs, double PeakLevel, bool Truncated, bool MicrophoneLost = false)
     : VoiceReply(Id);
 
+/// <summary>
+/// Loads the speech model (V0.2 H1.3) and warms it up with a short silent decode, so the first dictation does not pay
+/// the CUDA kernel start. Answered at once when that model is already loaded; a second request while it loads waits for
+/// the same load. The worker keeps answering pings while it loads. There is no unload: freeing the model inside the
+/// process leaves the CUDA context (~70 MiB of VRAM) and ~700 MB of RAM, so TextFlow ends the worker instead.
+/// </summary>
+/// <param name="ModelPath">The ggml model file.</param>
+/// <param name="GpuPackPath">Folder of the GPU pack (ADR-0009 §H0.5, holds <c>runtimes\cuda12\win-x64</c>), or null
+/// to use only what ships next to the worker.</param>
+public sealed record LoadModelRequest(long Id, string ModelPath, string? GpuPackPath) : VoiceRequest(Id);
+
+/// <param name="Runtime">The native runtime Whisper.net loaded (<c>Cuda12</c>).</param>
+/// <param name="LoadMs">Reading the model into the GPU; 0 when <paramref name="WasLoaded"/>.</param>
+/// <param name="WarmupMs">The silent warm-up decode; 0 when <paramref name="WasLoaded"/>.</param>
+/// <param name="WasLoaded">The model was already loaded: nothing was done.</param>
+public sealed record ModelLoadedReply(long Id, string Runtime, double LoadMs, double WarmupMs, bool WasLoaded) : VoiceReply(Id);
+
 public sealed record ErrorReply(long Id, VoiceErrorCode Code) : VoiceReply(Id);
 
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceErrorCode>))]
@@ -89,12 +108,18 @@ public enum VoiceErrorCode
     /// <summary>The device went away (unplugged, driver reset) as it was being opened.</summary>
     MicrophoneLost,
     NotCapturing,
+    /// <summary>The model file is not there (not downloaded yet, or deleted).</summary>
+    ModelNotFound,
+    /// <summary>whisper.cpp could not read the model (corrupt file, out of memory).</summary>
+    ModelLoadFailed,
+    /// <summary>No usable NVIDIA GPU: only the CPU runtime loaded, and turbo on CPU takes 23–27 s per phrase (ADR-0009).</summary>
+    NoGpu,
 }
 
 public static class VoiceProtocol
 {
     /// <summary>Bumped on any incompatible change; app and worker ship together, so a mismatch means a broken install.</summary>
-    public const int Version = 2;
+    public const int Version = 3;
 
     public const string PipeArgument = "--pipe";
 

@@ -26,4 +26,13 @@ public sealed record VoiceWorkerOptions
     public int MaxCrashes { get; init; } = 5;
 
     public TimeSpan CrashWindow { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The model unused this long is freed (H1.3): the worker is replaced by a fresh one without it, which gives back all
+    /// its VRAM (~620 MiB) and RAM (~1.2 GB). The next dictation loads it again.
+    /// </summary>
+    public TimeSpan ModelIdleTimeout { get; init; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>Loading takes 1–3 s (more from a cold disk); past this the load is taken as hung and the worker killed.</summary>
+    public TimeSpan ModelLoadTimeout { get; init; } = TimeSpan.FromSeconds(60);
 }

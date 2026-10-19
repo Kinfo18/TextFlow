@@ -63,7 +63,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish del worker de voz falló ($LASTEXITCODE)." }
 
     # Without TextFlow.pri (compiled XAML) the tray works but the main window cannot load (H6, first work-PC run).
-    foreach ($required in 'TextFlow.exe', 'TextFlow.dll', 'TextFlow.pri', 'TextFlow.VoiceWorker.exe', 'Microsoft.WindowsAppRuntime.dll', 'Assets\TextFlow.ico') {
+    foreach ($required in 'TextFlow.exe', 'TextFlow.dll', 'TextFlow.pri', 'TextFlow.VoiceWorker.exe', 'runtimes\win-x64\whisper.dll', 'Microsoft.WindowsAppRuntime.dll', 'Assets\TextFlow.ico') {
         if (-not (Test-Path (Join-Path $publishDir $required))) {
             throw "Falta $required en la publicación: el paquete no funcionaría."
         }

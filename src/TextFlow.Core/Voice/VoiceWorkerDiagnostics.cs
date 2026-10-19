@@ -1,3 +1,4 @@
+using TextFlow.Contracts.Voice;
 using TextFlow.Core.Diagnostics;
 
 namespace TextFlow.Core.Voice;
@@ -27,6 +28,8 @@ public enum VoiceWorkerExitReason
     HandshakeFailed,
     /// <summary>It sent something that is not a valid message.</summary>
     ProtocolError,
+    /// <summary>TextFlow replaced it to free the speech model after <see cref="VoiceWorkerOptions.ModelIdleTimeout"/>.</summary>
+    ModelIdle,
 }
 
 /// <summary>The voice worker is up and answered the handshake.</summary>
@@ -38,6 +41,15 @@ public sealed record VoiceWorkerExited(DateTimeOffset At, VoiceWorkerExitReason 
 
 /// <summary>The supervisor gave up after <paramref name="Crashes"/> crashes in a short time.</summary>
 public sealed record VoiceWorkerFaulted(DateTimeOffset At, int Crashes) : DiagnosticEvent(At);
+
+/// <summary>The worker loaded the speech model (not logged when it was already loaded).</summary>
+/// <param name="Runtime">The native runtime name (<c>Cuda12</c>).</param>
+public sealed record VoiceModelLoaded(DateTimeOffset At, [property: SafeToLog] string Runtime, double LoadMs, double WarmupMs)
+    : DiagnosticEvent(At);
+
+/// <param name="Code">Why the worker refused (NoGpu, ModelNotFound…); <c>Unknown</c> when <paramref name="TimedOut"/>.</param>
+/// <param name="TimedOut">No answer in <see cref="VoiceWorkerOptions.ModelLoadTimeout"/>: the worker was killed.</param>
+public sealed record VoiceModelLoadFailed(DateTimeOffset At, VoiceErrorCode Code, bool TimedOut) : DiagnosticEvent(At);
 
 /// <summary>The voice worker is not running or went away while a request was waiting for it.</summary>
 public sealed class VoiceWorkerUnavailableException : Exception

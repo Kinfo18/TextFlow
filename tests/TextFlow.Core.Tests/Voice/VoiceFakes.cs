@@ -90,7 +90,9 @@ internal sealed record WorkerScript(
     int ProtocolVersion = VoiceProtocol.Version,
     bool AnswerPings = true,
     bool ObeyShutdown = true,
-    VoiceErrorCode? CaptureError = null);
+    VoiceErrorCode? CaptureError = null,
+    VoiceErrorCode? ModelError = null,
+    bool AnswerModelLoad = true);
 
 /// <summary>A scripted worker on the other end of an in-memory pipe.</summary>
 internal sealed class FakeWorker : IVoiceWorkerConnection
@@ -122,6 +124,11 @@ internal sealed class FakeWorker : IVoiceWorkerConnection
     public bool Disposed { get; private set; }
 
     public int PingsAnswered { get; private set; }
+
+    /// <summary>Load requests that really loaded (not the ones answered as already loaded).</summary>
+    public int ModelLoads { get; private set; }
+
+    public bool ModelLoaded { get; private set; }
 
     /// <summary>The process dies on its own.</summary>
     public void Crash(int exitCode = 1) => Exit(exitCode);
@@ -171,6 +178,25 @@ internal sealed class FakeWorker : IVoiceWorkerConnection
                         break;
                     case StopCaptureRequest stop:
                         await VoiceFrame.WriteAsync(_worker, new CaptureStoppedReply(stop.Id, 1000, 0.5, false), CancellationToken.None);
+                        break;
+                    case LoadModelRequest load when Script.AnswerModelLoad:
+                        VoiceReply reply;
+                        if (Script.ModelError is { } error)
+                        {
+                            reply = new ErrorReply(load.Id, error);
+                        }
+                        else if (ModelLoaded)
+                        {
+                            reply = new ModelLoadedReply(load.Id, "Cuda12", 0, 0, WasLoaded: true);
+                        }
+                        else
+                        {
+                            ModelLoads++;
+                            ModelLoaded = true;
+                            reply = new ModelLoadedReply(load.Id, "Cuda12", 700, 400, WasLoaded: false);
+                        }
+
+                        await VoiceFrame.WriteAsync(_worker, reply, CancellationToken.None);
                         break;
                     case ShutdownMessage:
                         GotShutdown = true;
