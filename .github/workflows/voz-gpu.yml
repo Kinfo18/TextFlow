@@ -1,0 +1,71 @@
+# Builds the GPU pack for voice dictation (ADR-0009 §H0.5) and publishes it as a prerelease of its own, when a
+# voz-gpu-N tag is pushed (git tag voz-gpu-1 && git push origin voz-gpu-1). Not an app release: release.yml only
+# takes v*.*.* tags, and the app's updater ignores prereleases. Built here because this PC's network cuts big uploads.
+# Every input is pinned and checked; the zip's own SHA-256 then goes into the app (VoiceDownloads.GpuPack).
+name: Voice GPU pack
+
+on:
+  push:
+    tags:
+      - 'voz-gpu-*'
+
+permissions:
+  contents: write # create the release and upload its asset
+
+env:
+  PACK: textflow-voz-cuda12-1.zip
+  NUPKG_URL: https://api.nuget.org/v3-flatcontainer/whisper.net.runtime.cuda12.windows/1.9.1/whisper.net.runtime.cuda12.windows.1.9.1.nupkg
+  NUPKG_SHA512: pzvo217y8nHPcZav82zJ/uHstnsCFpNn6dodrOi2WjwY3j7xyPcBBhGXeRvvpRuZiRY0cuT8BETcY9nKGqVOZw==
+  CUDART_URL: https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.4.127-archive.zip
+  CUDART_SHA256: 6a1c32e68ee1a95ca17334691ff9ad1ffe7f352c24a083d55e4c96b8063b2bcb
+  CUBLAS_URL: https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-12.4.5.8-archive.zip
+  CUBLAS_SHA256: 698140f12da055a3709eee2e022fcfe7bc8edf31f30115e3f7a5c877a9491de5
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify the inputs
+        run: |
+          set -euo pipefail
+          mkdir -p in
+          curl -fsSL --retry 5 -o in/runtime.nupkg "$NUPKG_URL"
+          curl -fsSL --retry 5 -o in/cudart.zip "$CUDART_URL"
+          curl -fsSL --retry 5 -o in/cublas.zip "$CUBLAS_URL"
+          test "$(openssl dgst -sha512 -binary in/runtime.nupkg | base64 -w0)" = "$NUPKG_SHA512"
+          echo "$CUDART_SHA256  in/cudart.zip" | sha256sum -c -
+          echo "$CUBLAS_SHA256  in/cublas.zip" | sha256sum -c -
+
+      - name: Assemble the pack
+        run: |
+          set -euo pipefail
+          dll=pack/runtimes/cuda12/win-x64
+          mkdir -p "$dll" pack/licenses x
+          unzip -q in/runtime.nupkg 'build/win-x64/*.dll' -d x/nupkg
+          cp x/nupkg/build/win-x64/*.dll "$dll/"
+          unzip -q in/cudart.zip -d x/cudart
+          unzip -q in/cublas.zip -d x/cublas
+          cp x/cudart/*/bin/cudart64_12.dll "$dll/"
+          cp x/cublas/*/bin/cublas64_12.dll x/cublas/*/bin/cublasLt64_12.dll "$dll/"
+          cp x/cudart/*/LICENSE pack/licenses/NVIDIA-CUDA-EULA.txt
+          cp build/voz-gpu/THIRD-PARTY-NOTICES.txt pack/
+          for f in whisper.dll ggml-whisper.dll ggml-base-whisper.dll ggml-cpu-whisper.dll ggml-cuda-whisper.dll \
+                   cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
+            test -s "$dll/$f" || { echo "Missing $f"; exit 1; }
+          done
+          ls -l "$dll"
+          (cd pack && zip -q -r -9 "../$PACK" .)
+          sha256sum "$PACK" | tee "$PACK.sha256"
+          stat -c 'size %s' "$PACK"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" "$PACK" "$PACK.sha256" --prerelease \
+            --title "Paquete GPU de voz ($GITHUB_REF_NAME)" \
+            --notes "No es una versión de TextFlow. TextFlow lo descarga solo al activar el dictado en un equipo con GPU NVIDIA (ADR-0009). Contiene whisper.cpp con CUDA 12 (Whisper.net 1.9.1, MIT) y el runtime de CUDA 12.4 y cuBLAS de NVIDIA (redistribuibles según el EULA del CUDA Toolkit)."
