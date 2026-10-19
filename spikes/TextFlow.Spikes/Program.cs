@@ -31,6 +31,7 @@ return command switch
     "keys" => TextFlow.Spikes.KeyProbe.Run(args.Skip(1).ToArray()),
     "voice-worker" => await TextFlow.Spikes.VoiceWorkerProbe.RunAsync(args.Skip(1).ToArray()),
     "voice-capture" => await TextFlow.Spikes.VoiceCaptureProbe.RunAsync(args.Skip(1).ToArray()),
+    "voice-download" => await TextFlow.Spikes.VoiceDownloadProbe.RunAsync(args.Skip(1).ToArray()),
     "voice-model" => await TextFlow.Spikes.VoiceModelProbe.RunAsync(args.Skip(1).ToArray()),
     _ => Help(),
 };
@@ -50,6 +51,7 @@ static int Help()
           keys [s] [rctrl|f9|0xVK] [ms]  Qué ve el hook de cada tecla y qué haría el atajo de dictado (V0.2 H0.4)
           voice-worker [rondas]         Arranca el worker de voz, lo mata n veces y comprueba que vuelve (V0.2 H1.1)
           voice-capture [s] [mic] [veces]Graba s segundos en el worker (no se guarda) y da duración y nivel (V0.2 H1.2)
+          voice-download dir [solo-modelo] Descarga modelo y paquete GPU (reanudable, SHA-256) (V0.2 H1.4)
           voice-model [s] [bin] [gpu]   Carga el modelo, espera la liberación por inactividad y mide la VRAM (V0.2 H1.3)
         """);
     return 0;

@@ -13,7 +13,6 @@ permissions:
   contents: write # create the release and upload its asset
 
 env:
-  PACK: textflow-voz-cuda12-1.zip
   NUPKG_URL: https://api.nuget.org/v3-flatcontainer/whisper.net.runtime.cuda12.windows/1.9.1/whisper.net.runtime.cuda12.windows.1.9.1.nupkg
   NUPKG_SHA512: pzvo217y8nHPcZav82zJ/uHstnsCFpNn6dodrOi2WjwY3j7xyPcBBhGXeRvvpRuZiRY0cuT8BETcY9nKGqVOZw==
   CUDART_URL: https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.4.127-archive.zip
@@ -27,6 +26,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      - name: Name the pack after the tag
+        # voz-gpu-2 -> textflow-voz-cuda12-2.zip (the app installs it into voz\cuda12-2).
+        run: echo "PACK=textflow-voz-cuda12-${GITHUB_REF_NAME#voz-gpu-}.zip" >> "$GITHUB_ENV"
 
       - name: Download and verify the inputs
         run: |
@@ -57,7 +60,9 @@ jobs:
             test -s "$dll/$f" || { echo "Missing $f"; exit 1; }
           done
           ls -l "$dll"
-          (cd pack && zip -q -r -9 "../$PACK" .)
+          # Reproducible: fixed dates, sorted entries, no extra attributes (a rebuild gives the same SHA-256).
+          find pack -exec touch -h -d '2026-01-01 00:00:00' {} +
+          (cd pack && find . -type f | sed 's|^\./||' | LC_ALL=C sort | zip -q -X -9 "../$PACK" -@)
           sha256sum "$PACK" | tee "$PACK.sha256"
           stat -c 'size %s' "$PACK"
 

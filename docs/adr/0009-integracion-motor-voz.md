@@ -116,7 +116,8 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
 
 ### Pendiente de verificar en H1
 - Que Velopack (`GithubSource`) ignora el release `voz-gpu-1` al buscar actualizaciones (no tiene `releases.*.json`
-  y es prerelease). Si no, mover el paquete a un repo aparte (`TextFlow-assets`).
+  y es prerelease). Si no, mover el paquete a un repo aparte (`TextFlow-assets`). **Resuelto en H1.4:** se publica
+  como prerelease, la app busca con `prerelease: false` y GitHub sigue dando `v0.1.1` como última versión.
 - Que `ggml-cuda-whisper.dll` encuentra `cudart`/`cublas` en su propia carpeta: si no, el worker llama a
   `AddDllDirectory` con la carpeta del paquete antes de cargar el runtime. **Resuelto en H1.3:** `cublas` sí se
   encuentra; `cudart` no (ver la sección H1.3).
@@ -200,3 +201,43 @@ pero turbo en CPU tarda **23–27 s por frase** (4 frases). Inutilizable, como y
   del worker (carga 1,6 s con el disco frío + calentamiento 0,6 s); segunda petición 0 ms; liberación a los 21 s de
   inactividad con la VRAM **exactamente en la base** (690 → 1 310 → 690 MiB); recarga **1,2 s** (0,7 + 0,5).
 - En el instalador solo va el runtime de CPU de Whisper.net (~2 MB por arquitectura en `runtimes\win-*`).
+
+## Descarga del modelo y del paquete GPU (V0.2 H1.4, 2026-10-18)
+
+- **Paquete `voz-gpu-1` publicado.** `.github/workflows/voz-gpu.yml` se lanza al empujar un tag `voz-gpu-N`. Baja el
+  nupkg de NuGet (SHA-512 fijado) y los zips oficiales de NVIDIA (SHA-256 de `redistrib_12.4.1.json`, fijados), y
+  monta `textflow-voz-cuda12-1.zip`: las 8 DLL en `runtimes\cuda12\win-x64\`, el EULA de NVIDIA en `licenses\` y
+  `THIRD-PARTY-NOTICES.txt` (MIT de Whisper.net y whisper.cpp). Lo publica como prerelease con su `.sha256`.
+  Resultado: **644 691 012 B**, SHA-256 `39bdab6453f63eda55ad7315200524815d32757e05d437253198e73db9130687`, fijado
+  en `VoiceDownloads`. Un paquete nuevo es otro tag (`voz-gpu-2` → `textflow-voz-cuda12-2.zip`) y otra carpeta
+  (`voz\cuda12-2`, `VoiceModelFiles.GpuPackFolder`), así que nunca se confunde con el anterior. El release de un tag
+  no se rehace. Desde `voz-gpu-2` el zip es reproducible (fechas fijas, entradas ordenadas, `zip -X`); el de
+  `voz-gpu-1` no lo es, por eso su hash fijado manda.
+- **`ResumableDownloader`** (Infrastructure): descarga a `.part` junto al destino y reanuda con `Range` tras cada
+  corte. Cada reintento pide otra vez la URL original, porque la de la CDN de Hugging Face caduca. Una conexión sin
+  bytes en 30 s se da por muerta: aquí la red también se queda colgada, no solo corta.
+  - Reintenta con espera creciente (1 s → 30 s) mientras avance; 8 intentos seguidos sin un byte nuevo → `NetworkGaveUp`,
+    y lo descargado se conserva para la próxima vez.
+  - Un servidor que ignora el `Range`, o un 416, empieza de cero; 404/403 → `Refused`; más bytes de los esperados →
+    `SizeMismatch`.
+  - Al final comprueba el SHA-256: si no coincide, **borra el archivo y avisa** (`HashMismatch`). Si coincide, lo
+    renombra a su sitio. Un archivo que ya está en su sitio se vuelve a verificar (≈ 1 s) y, si es otro (versión
+    vieja, copia dañada), se baja de nuevo. Un `.part` más largo que el archivo empieza de cero; un 206 con otro
+    rango conserva el `.part` y vuelve a pedir.
+  - Los fallos del disco (lleno, archivo bloqueado por el antivirus) salen como `Disk`, no como fallo de red.
+- **`VoiceFilesInstaller`:** comprueba el espacio libre antes de empezar (descargas pendientes + paquete
+  descomprimido + 200 MB), baja lo que falte, descomprime el zip en `cuda12-1.partial`, comprueba que están las 8 DLL,
+  lo renombra a `cuda12-1` y borra el zip. Si algo falla, la siguiente llamada sigue donde se quedó. Una sola
+  instalación a la vez (una segunda llamada se rechaza). Borrar y renombrar carpetas se reintenta unos segundos: tras
+  descomprimir 1,1 GB, Defender o el indexador aún tienen archivos abiertos. `DeleteAsync()` borra todo lo de voz
+  (para "Borrar archivos de voz" en Diagnóstico), empezando por el paquete; antes hay que parar el worker.
+- **`NvidiaDriver.CudaVersion()`** pregunta a `nvcuda.dll` solo su versión (`cuDriverGetVersion`, sin `cuInit`, para
+  no arrancar CUDA dentro de TextFlow). Con 12.0 o más se ofrece el paquete; si no hay GPU usable, lo dice la carga
+  (`NoGpu`). Aquí: CUDA 13.4.
+- **Después de instalar**, un worker que ya esté en marcha se cambia por otro (`StopAsync` + `Start`): Whisper.net
+  elige el runtime una sola vez por proceso.
+- **Medido** en este PC (`TextFlow.Spikes voice-download`): el modelo desde Hugging Face, **cortado a los 25 MB y
+  relanzado**, reanudó en 25 MiB y terminó con el hash correcto (355 s, ~1,5 MB/s). Paquete GPU desde la release:
+  212 s. Con los archivos descargados, `voice-model` carga en CUDA (1,1 s + calentamiento 0,5 s) y la VRAM vuelve a
+  la base al liberar.
+- La pantalla de voz (activar el dictado, progreso, aviso de errores) llega con H2/H4.4 y usa este instalador.
